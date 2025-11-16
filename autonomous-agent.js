@@ -103,7 +103,13 @@ class AutonomousAgent {
             failedGenerations: 0,
             lastCycleTime: null,
             cyclesByDay: {},
-            performanceHistory: []
+            performanceHistory: [],
+            // Attack success metrics
+            emailsBypassed: 0,      // Emails that made it past defense
+            emailsDetected: 0,      // Emails that were blocked/detected
+            emailsClicked: 0,       // Emails that were clicked
+            bypassRate: 0,          // Percentage of emails that bypassed
+            clickRate: 0            // Percentage of emails that were clicked
         };
         this.currentStrategyIndex = 0;
         this.isRunning = false;
@@ -435,7 +441,24 @@ Return ONLY the JSON object, nothing else.`;
             });
 
             if (response.ok) {
-                return await response.json();
+                const data = await response.json();
+                if (data.success && data.metrics) {
+                    // Update agent stats with attack success metrics
+                    this.stats.emailsBypassed = data.metrics.bypassed || 0;
+                    this.stats.emailsDetected = data.metrics.detected || 0;
+                    this.stats.emailsClicked = data.metrics.emailsClicked || 0;
+                    
+                    // Calculate rates
+                    const totalEmails = data.metrics.totalEmails || 0;
+                    if (totalEmails > 0) {
+                        this.stats.bypassRate = parseFloat(((data.metrics.bypassed / totalEmails) * 100).toFixed(2));
+                        this.stats.clickRate = parseFloat(data.metrics.clickRate || 0);
+                    }
+                    
+                    // Save updated metrics
+                    this.saveMetrics();
+                }
+                return data;
             }
         } catch (error) {
             this.log(`Failed to get industry metrics: ${error.message}`, 'WARN');
@@ -470,9 +493,13 @@ Return ONLY the JSON object, nothing else.`;
                 // Periodically fetch and log industry metrics
                 if (this.stats.totalCycles % 5 === 0) {
                     const metrics = await this.getIndustryMetrics();
-                    if (metrics) {
-                        this.log(`Industry metrics: ${metrics.totalEmails} total emails, ${metrics.detected} detected, ${metrics.bypassed} bypassed`);
+                    if (metrics && metrics.metrics) {
+                        this.log(`Industry metrics: ${metrics.metrics.totalEmails} total emails, ${metrics.metrics.detected} detected, ${metrics.metrics.bypassed} bypassed, ${metrics.metrics.emailsClicked} clicked`);
+                        this.log(`Attack success: ${this.stats.bypassRate}% bypass rate, ${this.stats.clickRate}% click rate`);
                     }
+                } else {
+                    // Always update metrics, but only log every 5 cycles
+                    await this.getIndustryMetrics();
                 }
             } catch (error) {
                 this.log(`Cycle error: ${error.message}`, 'ERROR');
@@ -510,9 +537,13 @@ Return ONLY the JSON object, nothing else.`;
                 hours,
                 totalMs: uptime
             },
-            successRate: this.stats.totalEmailsGenerated > 0
-                ? ((this.stats.successfulGenerations / (this.stats.successfulGenerations + this.stats.failedGenerations)) * 100).toFixed(2)
+            // Generation success rate (API call success)
+            generationSuccessRate: this.stats.totalEmailsGenerated > 0
+                ? parseFloat(((this.stats.successfulGenerations / (this.stats.successfulGenerations + this.stats.failedGenerations)) * 100).toFixed(2))
                 : 0,
+            // Attack success metrics (bypass and click rates)
+            bypassRate: this.stats.bypassRate || 0,
+            clickRate: this.stats.clickRate || 0,
             isRunning: this.isRunning
         };
     }

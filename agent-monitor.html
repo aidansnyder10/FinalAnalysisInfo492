@@ -207,11 +207,18 @@
                     ? `${agent.uptime.days}d ${agent.uptime.hours}h ${agent.uptime.minutes}m`
                     : 'N/A';
                 
-                // Calculate success rate
+                // Calculate generation success rate (API call success)
                 const total = agent.successfulGenerations + agent.failedGenerations;
-                const successRate = total > 0 
+                const generationSuccessRate = total > 0 
                     ? ((agent.successfulGenerations / total) * 100).toFixed(1)
                     : 0;
+                
+                // Get attack success metrics (bypass and click rates)
+                const bypassRate = agent.bypassRate || 0;
+                const clickRate = agent.clickRate || 0;
+                const emailsBypassed = agent.emailsBypassed || 0;
+                const emailsDetected = agent.emailsDetected || 0;
+                const emailsClicked = agent.emailsClicked || 0;
                 
                 // Build content
                 const content = `
@@ -229,9 +236,21 @@
                         </div>
                         
                         <div class="card">
-                            <h3>Success Rate</h3>
-                            <div class="value">${successRate}%</div>
+                            <h3>Generation Success</h3>
+                            <div class="value">${generationSuccessRate}%</div>
                             <div class="label">${agent.successfulGenerations} success, ${agent.failedGenerations} failed</div>
+                        </div>
+                        
+                        <div class="card" style="border-left-color: #00ff88;">
+                            <h3>Bypass Rate</h3>
+                            <div class="value">${bypassRate.toFixed(1)}%</div>
+                            <div class="label">${emailsBypassed} bypassed, ${emailsDetected} detected</div>
+                        </div>
+                        
+                        <div class="card" style="border-left-color: #ffaa00;">
+                            <h3>Click Rate</h3>
+                            <div class="value">${clickRate.toFixed(1)}%</div>
+                            <div class="label">${emailsClicked} emails clicked</div>
                         </div>
                         
                         <div class="card">

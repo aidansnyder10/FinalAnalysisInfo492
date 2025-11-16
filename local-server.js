@@ -388,8 +388,29 @@ app.post('/api/agent/deploy-emails', (req, res) => {
             console.error('Error reading inbox file:', error);
         }
 
-        // Add new emails
-        existingEmails.push(...emails);
+        // Add new emails and trigger user engagement simulation
+        emails.forEach(email => {
+            existingEmails.push(email);
+            
+            // Trigger user engagement simulation to track clicks
+            if (email.id) {
+                const userId = email.targetPersona?.name || 'admin';
+                const campaignId = `agent-${Date.now()}`;
+                const attackLevel = email.attackLevel || 'advanced';
+                
+                simulateUserFlow(
+                    email.id,
+                    userId,
+                    campaignId,
+                    attackLevel,
+                    {
+                        model: email.model,
+                        strategy: email.strategy,
+                        subject: email.subject
+                    }
+                );
+            }
+        });
 
         // Save back to file
         try {
@@ -455,7 +476,13 @@ app.get('/api/agent/status', (req, res) => {
                         days: Math.floor(uptime / (1000 * 60 * 60 * 24)),
                         hours: Math.floor((uptime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
                         minutes: Math.floor((uptime % (1000 * 60 * 60)) / (1000 * 60))
-                    }
+                    },
+                    // Attack success metrics
+                    emailsBypassed: metrics.emailsBypassed || 0,
+                    emailsDetected: metrics.emailsDetected || 0,
+                    emailsClicked: metrics.emailsClicked || 0,
+                    bypassRate: metrics.bypassRate || 0,
+                    clickRate: metrics.clickRate || 0
                 };
             }
         } catch (error) {
@@ -520,21 +547,37 @@ app.get('/api/agent/metrics', (req, res) => {
             console.error('Error reading metrics file:', error);
         }
 
-        // Also check inbox file for total count
+        // Also check inbox file for total count and bypass/detection status
         const inboxFile = './bank-inbox.json';
+        let emailsClicked = 0;
         try {
             if (fs.existsSync(inboxFile)) {
                 const data = fs.readFileSync(inboxFile, 'utf8');
                 const emails = JSON.parse(data);
                 metrics.totalEmails = emails.length;
+                
+                // Count emails that bypassed (status !== 'blocked' or no status)
+                metrics.bypassed = emails.filter(e => e.status !== 'blocked' && e.status !== 'reported').length;
+                metrics.detected = emails.filter(e => e.status === 'blocked' || e.status === 'reported').length;
+                
+                // Count emails that were clicked (read === true indicates engagement)
+                emailsClicked = emails.filter(e => e.read === true).length;
             }
         } catch (error) {
             // Ignore
         }
 
+        // Get click data from engagement events
+        const clickedEvents = events.filter(e => e.event === 'clicked' && !e.phantom);
+        emailsClicked = clickedEvents.length;
+
         res.json({
             success: true,
-            metrics
+            metrics: {
+                ...metrics,
+                emailsClicked,
+                clickRate: metrics.totalEmails > 0 ? ((emailsClicked / metrics.totalEmails) * 100).toFixed(2) : 0
+            }
         });
     } catch (error) {
         console.error('[Agent] Error getting metrics:', error);
