@@ -6,6 +6,9 @@ class BankAdminDashboard {
         this.autoDetectionEnabled = true; // Enabled by default
         this.detectionSettings = this.loadDetectionSettings();
         
+        // Initialize Decision Tree Classifier for ML-based risk assessment
+        this.decisionTreeClassifier = new DecisionTreeClassifier();
+        
         this.init();
     }
 
@@ -235,11 +238,24 @@ class BankAdminDashboard {
             threatsCard.className = 'bank-kpi-card';
         }
         
-        // Calculate average response time (simulated)
-        if (blockedEmails > 0) {
+        // Calculate average response time from actual detection times
+        const detectedEmailsWithTime = this.emails.filter(e => 
+            (e.status === 'blocked' || e.status === 'reported') && 
+            e.detectionTime !== undefined
+        );
+        
+        if (detectedEmailsWithTime.length > 0) {
+            const avgTime = detectedEmailsWithTime.reduce((sum, e) => sum + e.detectionTime, 0) / detectedEmailsWithTime.length;
+            document.getElementById('kpi-response').textContent = `${Math.round(avgTime)}m`;
+            document.getElementById('kpi-response-change').textContent = 'Within SLA';
+        } else if (blockedEmails > 0) {
+            // Fallback: simulated time if no actual detection times
             const avgTime = Math.floor(Math.random() * 15 + 5);
             document.getElementById('kpi-response').textContent = `${avgTime}m`;
             document.getElementById('kpi-response-change').textContent = 'Within SLA';
+        } else {
+            document.getElementById('kpi-response').textContent = '-';
+            document.getElementById('kpi-response-change').textContent = 'Monitoring';
         }
     }
     
@@ -322,16 +338,20 @@ class BankAdminDashboard {
                 const verify = JSON.parse(localStorage.getItem('demo3_bank_inbox') || '[]');
                 console.log(`Bank Admin handleNewEmails: Verified ${verify.length} emails in localStorage before processing`);
                 
-                // Run automated security analysis on new emails
-                newEmails.forEach(email => {
-                    if (email.status === 'delivered') {
+                // Force a fresh read first to get the actual email objects
+                this.loadEmails();
+                
+                // Run automated security analysis on new emails (use emails from this.emails after load)
+                const newEmailIds = new Set(newEmails.map(e => e.id));
+                this.emails.forEach(email => {
+                    if (newEmailIds.has(email.id) && email.status === 'delivered' && !email.detectionMetadata) {
+                        console.log(`Analyzing email ${email.id} with decision tree`);
                         this.automatedSecurityAnalysis(email);
                     }
                 });
                 
-                console.log('About to reload emails after receiving new ones...');
-                // Force a fresh read
-                this.loadEmails();
+                // Save updated emails back to localStorage
+                this.saveEmails();
                 
                 // Double-check after a short delay (for cross-tab sync issues)
                 setTimeout(() => {
@@ -341,12 +361,18 @@ class BankAdminDashboard {
                         console.log('Bank Admin: Email count mismatch detected, reloading...');
                         this.loadEmails();
                     }
+                    
+                    // Reload to get updated risk levels
+                    this.loadEmails();
                     this.displayEmails();
-                    this.showSecurityAlert(newEmails);
+                    this.updateKPIs(); // Make sure KPIs are updated
                     this.updateSecurityStatus();
+                    this.showSecurityAlert(newEmails);
                     this.updateThreatFeed(newEmails);
-                    this.addActivityLog(`${newEmails.length} new email${newEmails.length > 1 ? 's' : ''} received - Automated analysis initiated`, 
-                        newEmails.some(e => e.riskLevel === 'high') ? 'critical' : 'warning');
+                    
+                    const hasHighRisk = this.emails.some(e => newEmailIds.has(e.id) && e.riskLevel === 'high');
+                    this.addActivityLog(`${newEmails.length} new email${newEmails.length > 1 ? 's' : ''} received - ML analysis complete`, 
+                        hasHighRisk ? 'critical' : 'warning');
                     
                     // Update evaluation metrics immediately (even with pending emails)
                     setTimeout(() => {
@@ -480,12 +506,29 @@ class BankAdminDashboard {
                 </div>
 
                 <div style="background: #fff5f5; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ff4444;">
-                    <h4 style="margin-top: 0; color: #ff4444;"><i class="fas fa-exclamation-triangle"></i> Security Analysis</h4>
+                    <h4 style="margin-top: 0; color: #ff4444;"><i class="fas fa-exclamation-triangle"></i> Security Analysis (ML Decision Tree)</h4>
+                    ${this.selectedEmail.mlClassification ? `
+                        <div style="margin-bottom: 10px;">
+                            <strong>ML Classification:</strong> 
+                            <span style="padding: 4px 8px; border-radius: 4px; background: ${this.selectedEmail.mlClassification.riskLevel === 'high' ? '#ff4444' : this.selectedEmail.mlClassification.riskLevel === 'medium' ? '#ff8800' : '#00aa44'}; color: white; font-weight: bold;">
+                                ${this.selectedEmail.mlClassification.riskLevel.toUpperCase()}
+                            </span>
+                            <span style="margin-left: 10px; color: #666;">Confidence: ${(this.selectedEmail.mlClassification.confidence * 100).toFixed(0)}%</span>
+                        </div>
+                        <div style="margin-bottom: 10px; color: #666;">
+                            <strong>Reasoning:</strong> ${this.selectedEmail.mlClassification.reasoning}
+                        </div>
+                    ` : ''}
                     <ul style="margin: 0; padding-left: 20px; color: #666;">
                         ${this.selectedEmail.riskScore > 70 ? '<li><strong>High Risk:</strong> Contains urgent language and credential requests</li>' : ''}
                         ${this.selectedEmail.subject.toLowerCase().includes('urgent') || this.selectedEmail.subject.toLowerCase().includes('critical') ? '<li><strong>Urgency Indicators:</strong> Subject line uses urgent language</li>' : ''}
                         ${this.selectedEmail.content.toLowerCase().includes('credentials') || this.selectedEmail.content.toLowerCase().includes('password') ? '<li><strong>Suspicious:</strong> Requests sensitive information</li>' : ''}
-                        <li><strong>Sender Verification:</strong> Domain does not match known vendors</li>
+                        ${this.selectedEmail.mlClassification?.features?.urlAuthenticityScore !== undefined ? 
+                            `<li><strong>URL Authenticity:</strong> ${this.selectedEmail.mlClassification.features.urlAuthenticityScore.toFixed(0)}/100 ${this.selectedEmail.mlClassification.features.urlAuthenticityScore < 50 ? '(Suspicious)' : '(Authentic)'}</li>` : ''}
+                        ${this.selectedEmail.mlClassification?.features?.senderAuthenticityScore !== undefined ? 
+                            `<li><strong>Sender Authenticity:</strong> ${this.selectedEmail.mlClassification.features.senderAuthenticityScore.toFixed(0)}/100</li>` : ''}
+                        ${this.selectedEmail.mlClassification?.features?.grammarScore !== undefined ? 
+                            `<li><strong>Grammar Quality:</strong> ${this.selectedEmail.mlClassification.features.grammarScore.toFixed(0)}/100</li>` : ''}
                     </ul>
                 </div>
 
@@ -583,27 +626,53 @@ class BankAdminDashboard {
         return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
     }
 
-    // Automated security analysis based on real-world statistics
+    // Automated security analysis using Decision Tree ML classifier
     automatedSecurityAnalysis(email) {
         if (!this.autoDetectionEnabled) return;
         
-        // Determine base detection rate based on attack level
+        // Use Decision Tree Classifier to classify email risk
+        const classification = this.decisionTreeClassifier.classify({
+            subject: email.subject || '',
+            content: email.content || '',
+            sender: email.sender || '',
+            senderEmail: email.senderEmail || '',
+            urls: email.urls || [],
+            attachments: email.attachments || []
+        });
+        
+        // Update email with ML classification results
+        email.riskLevel = classification.riskLevel; // 'high', 'medium', or 'low'
+        email.riskScore = classification.riskScore; // 0-100 score
+        email.mlClassification = {
+            riskLevel: classification.riskLevel,
+            riskScore: classification.riskScore,
+            confidence: classification.confidence,
+            reasoning: classification.reasoning,
+            features: classification.features
+        };
+        
+        // Determine base detection rate based on ML-classified risk level
+        // Higher risk = higher detection rate
         let baseDetectionRate;
-        switch(email.attackLevel) {
-            case 'basic':
+        switch(classification.riskLevel) {
+            case 'high':
+                // High risk emails are detected more often
+                baseDetectionRate = this.detectionSettings.generalPhishing * 1.2; // Boost for high risk
+                baseDetectionRate = Math.min(0.95, baseDetectionRate); // Cap at 95%
+                break;
+            case 'medium':
+                // Medium risk uses base detection rates
                 baseDetectionRate = this.detectionSettings.generalPhishing;
                 break;
-            case 'advanced':
-                baseDetectionRate = this.detectionSettings.targetedSpearPhishing;
-                break;
-            case 'expert':
-                baseDetectionRate = this.detectionSettings.aiGeneratedSpearPhishing;
+            case 'low':
+                // Low risk emails are detected less often
+                baseDetectionRate = this.detectionSettings.generalPhishing * 0.6;
                 break;
             default:
                 baseDetectionRate = this.detectionSettings.generalPhishing;
         }
         
-        // Apply model-specific adjustments
+        // Apply model-specific adjustments (AI-generated emails may be harder to detect)
         const modelName = email.model?.toLowerCase() || 'default';
         let modelAdjustment = this.detectionSettings.modelAdjustments.default;
         for (const [key, value] of Object.entries(this.detectionSettings.modelAdjustments)) {
@@ -623,12 +692,12 @@ class BankAdminDashboard {
         // Determine if email will be detected
         const willBeDetected = Math.random() < finalDetectionRate;
         
-        // Calculate response time based on risk level
+        // Calculate response time based on ML-classified risk level
         let responseTimeMinutes;
-        if (email.riskScore >= 70) {
+        if (classification.riskLevel === 'high') {
             const range = this.detectionSettings.highRiskResponseTime;
             responseTimeMinutes = Math.random() * (range.max - range.min) + range.min;
-        } else if (email.riskScore >= 40) {
+        } else if (classification.riskLevel === 'medium') {
             const range = this.detectionSettings.mediumRiskResponseTime;
             responseTimeMinutes = Math.random() * (range.max - range.min) + range.min;
         } else {
@@ -636,22 +705,39 @@ class BankAdminDashboard {
             responseTimeMinutes = Math.random() * (range.max - range.min) + range.min;
         }
         
-        // Schedule auto-action if detected
-        if (willBeDetected) {
+        // For high-risk emails, always auto-block (regardless of detection probability)
+        // For medium-risk, use scheduled detection based on willBeDetected
+        if (classification.riskLevel === 'high') {
+            // High-risk emails should be blocked quickly (within 1-3 minutes)
+            const highRiskResponseTime = Math.min(responseTimeMinutes, 3); // Cap at 3 minutes for high risk
+            const responseTimeMs = highRiskResponseTime * 60 * 1000;
+            
+            // Always schedule auto-block for high-risk emails
+            setTimeout(() => {
+                this.autoDetectEmail(email.id);
+            }, responseTimeMs);
+            
+            // Override willBeDetected to true for high-risk emails
+            willBeDetected = true;
+        } else if (classification.riskLevel === 'medium' && willBeDetected) {
+            // Medium-risk emails use normal scheduled detection
             const responseTimeMs = responseTimeMinutes * 60 * 1000;
             setTimeout(() => {
                 this.autoDetectEmail(email.id);
             }, responseTimeMs);
         }
+        // Low-risk emails are not auto-blocked
         
         // Store detection metadata for evaluation
         email.detectionMetadata = {
+            mlClassification: classification,
             baseDetectionRate: baseDetectionRate,
             adjustedRate: adjustedDetectionRate,
             finalRate: finalDetectionRate,
             willBeDetected: willBeDetected,
             scheduledResponseTime: responseTimeMinutes,
-            analysisTime: new Date().toISOString()
+            analysisTime: new Date().toISOString(),
+            analysisMethod: 'decision_tree_ml'
         };
         
         this.saveEmails();
@@ -663,15 +749,15 @@ class BankAdminDashboard {
         const email = this.emails.find(e => e.id === emailId);
         if (!email || email.status !== 'delivered') return; // Already processed
         
-        // Determine action based on risk score
-        if (email.riskScore >= 70) {
-            // High risk: Auto-block
+        // Determine action based on ML-classified risk level (use decision tree classification)
+        if (email.riskLevel === 'high') {
+            // High risk: Auto-block immediately
             email.status = 'blocked';
             email.autoDetected = true;
             email.detectedAt = new Date().toISOString();
             email.detectionTime = (new Date(email.detectedAt) - new Date(email.receivedAt)) / (1000 * 60); // minutes
             this.addActivityLog(`[AUTO] Blocked high-risk email: ${email.subject}`, 'critical');
-        } else if (email.riskScore >= 40) {
+        } else if (email.riskLevel === 'medium') {
             // Medium risk: Auto-report
             email.status = 'reported';
             email.autoDetected = true;
@@ -684,15 +770,17 @@ class BankAdminDashboard {
                 emailId: email.id,
                 subject: email.subject,
                 sender: email.senderEmail,
-                target: email.targetPersona.name,
+                target: email.targetPersona?.name || 'Unknown',
                 reportedAt: email.detectedAt,
                 riskScore: email.riskScore,
+                riskLevel: email.riskLevel,
                 autoDetected: true
             });
             localStorage.setItem('demo3_security_log', JSON.stringify(securityLog));
             
             this.addActivityLog(`[AUTO] Reported phishing: ${email.subject}`, 'warning');
         }
+        // Low risk emails remain as 'delivered' and are not auto-blocked
         
         this.saveEmails();
         this.updateKPIs();
@@ -705,11 +793,21 @@ class BankAdminDashboard {
     
     // Process emails that haven't been analyzed yet
     processPendingEmails() {
+        let analyzedCount = 0;
         this.emails.forEach(email => {
             if (email.status === 'delivered' && !email.detectionMetadata) {
                 this.automatedSecurityAnalysis(email);
+                analyzedCount++;
             }
         });
+        
+        if (analyzedCount > 0) {
+            // Save emails after analysis
+            this.saveEmails();
+            // Update KPIs after analyzing emails
+            this.updateKPIs();
+            console.log(`Processed ${analyzedCount} pending emails with decision tree classifier`);
+        }
         
         // Check for overdue emails that should have been detected but haven't been processed yet
         this.checkOverdueDetections();
