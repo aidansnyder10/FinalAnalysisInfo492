@@ -11,6 +11,7 @@ try {
 
 const fs = require('fs');
 const path = require('path');
+const StrategyTrainer = require('./strategy-trainer');
 
 // Configuration
 const CONFIG = {
@@ -113,6 +114,9 @@ class AutonomousAgent {
         };
         this.currentStrategyIndex = 0;
         this.isRunning = false;
+        
+        // Initialize strategy trainer for self-learning
+        this.strategyTrainer = new StrategyTrainer(ATTACK_STRATEGIES, TARGET_PERSONAS);
         
         // Load existing metrics
         this.loadMetrics();
@@ -328,26 +332,28 @@ Return ONLY the JSON object, nothing else.`;
         this.log(`Starting attack cycle #${this.stats.totalCycles + 1}`);
         const cycleStartTime = Date.now();
         
-        // Select random targets
-        const shuffled = [...TARGET_PERSONAS].sort(() => 0.5 - Math.random());
-        const selectedTargets = shuffled.slice(0, CONFIG.MAX_TARGETS_PER_CYCLE);
+        // Use trainer to select best targets and strategies
+        const selectedTargets = this.strategyTrainer.selectBestTargets(CONFIG.MAX_TARGETS_PER_CYCLE);
         
-        // Get current strategy
-        const strategy = ATTACK_STRATEGIES[this.currentStrategyIndex];
-        this.currentStrategyIndex = (this.currentStrategyIndex + 1) % ATTACK_STRATEGIES.length;
+        // For each target, use persona-specific best strategy if available
+        const targetStrategies = selectedTargets.map(persona => {
+            const bestStrategy = this.strategyTrainer.getBestStrategyForPersona(persona.id);
+            return { persona, strategy: bestStrategy };
+        });
         
-        this.log(`Targeting ${selectedTargets.length} personas with ${strategy.attackLevel} attack using ${strategy.model}`);
+        this.log(`Targeting ${selectedTargets.length} personas with trainer-selected strategies`);
         
         const generatedEmails = [];
         let successCount = 0;
         let failCount = 0;
 
-        for (const persona of selectedTargets) {
+        // Generate emails with persona-specific strategies
+        for (const { persona, strategy } of targetStrategies) {
             try {
                 const email = await this.generatePhishingEmail(persona, strategy);
                 generatedEmails.push(email);
                 successCount++;
-                this.log(`✓ Generated email for ${persona.name}: "${email.subject}"`);
+                this.log(`✓ Generated email for ${persona.name} using ${strategy.attackLevel} attack: "${email.subject}"`);
                 
                 // Small delay between generations
                 await this.sleep(1000);
@@ -365,6 +371,17 @@ Return ONLY the JSON object, nothing else.`;
             } catch (error) {
                 this.log(`✗ Failed to deploy emails: ${error.message}`, 'ERROR');
             }
+        }
+
+        // Get industry metrics for learning (before updating stats)
+        let industryMetrics = null;
+        try {
+            const metricsResult = await this.getIndustryMetrics();
+            if (metricsResult && metricsResult.metrics) {
+                industryMetrics = metricsResult.metrics;
+            }
+        } catch (error) {
+            this.log(`Failed to get industry metrics for learning: ${error.message}`, 'WARN');
         }
 
         // Update stats
@@ -385,14 +402,15 @@ Return ONLY the JSON object, nothing else.`;
         this.stats.cyclesByDay[today].successes += successCount;
         this.stats.cyclesByDay[today].failures += failCount;
 
-        // Record performance
+        // Record performance (use first strategy for historical tracking)
+        const firstStrategy = targetStrategies.length > 0 ? targetStrategies[0].strategy : null;
         this.stats.performanceHistory.push({
             timestamp: new Date().toISOString(),
             cycleNumber: this.stats.totalCycles,
             emailsGenerated: generatedEmails.length,
             successRate: selectedTargets.length > 0 ? (successCount / selectedTargets.length * 100).toFixed(2) : 0,
             cycleDuration: cycleDuration,
-            strategy: strategy
+            strategy: firstStrategy
         });
 
         // Keep only last 1000 performance records
@@ -401,6 +419,40 @@ Return ONLY the JSON object, nothing else.`;
         }
 
         this.saveMetrics();
+
+        // LEARN FROM RESULTS - Feed cycle results to trainer
+        if (generatedEmails.length > 0) {
+            this.strategyTrainer.learnFromCycle(
+                {
+                    success: true,
+                    emailsGenerated: generatedEmails.length,
+                    successCount,
+                    failCount,
+                    cycleDuration
+                },
+                generatedEmails,
+                industryMetrics || {
+                    totalEmails: generatedEmails.length,
+                    bypassed: 0,
+                    detected: 0,
+                    emailsClicked: 0
+                }
+            );
+            
+            // Log learning stats periodically
+            if (this.stats.totalCycles % 10 === 0) {
+                const trainerStats = this.strategyTrainer.getStats();
+                this.log(`📚 Trainer Stats: ${trainerStats.totalStrategies} strategies tracked, ${trainerStats.totalPersonas} personas tracked`);
+                if (trainerStats.topStrategies.length > 0) {
+                    const top = trainerStats.topStrategies[0];
+                    this.log(`   Top strategy: ${top.strategy} (score: ${top.score.toFixed(2)}, bypass: ${top.bypassRate.toFixed(2)}%, attempts: ${top.attempts})`);
+                }
+                if (trainerStats.topVulnerablePersonas.length > 0) {
+                    const topPersona = trainerStats.topVulnerablePersonas[0];
+                    this.log(`   Most vulnerable: ${topPersona.personaName} (vuln: ${topPersona.vulnerabilityScore.toFixed(2)}, bypass: ${topPersona.bypassRate.toFixed(2)}%, attempts: ${topPersona.attempts})`);
+                }
+            }
+        }
 
         this.log(`Cycle complete: ${successCount} success, ${failCount} failed, ${cycleDuration}ms`);
         
@@ -497,6 +549,11 @@ Return ONLY the JSON object, nothing else.`;
                         this.log(`Industry metrics: ${metrics.metrics.totalEmails} total emails, ${metrics.metrics.detected} detected, ${metrics.metrics.bypassed} bypassed, ${metrics.metrics.emailsClicked} clicked`);
                         this.log(`Attack success: ${this.stats.bypassRate}% bypass rate, ${this.stats.clickRate}% click rate`);
                     }
+                    
+                    // Print training status every 5 cycles
+                    if (this.stats.totalCycles % 15 === 0) {
+                        this.printTrainingStatus();
+                    }
                 } else {
                     // Always update metrics, but only log every 5 cycles
                     await this.getIndustryMetrics();
@@ -546,6 +603,42 @@ Return ONLY the JSON object, nothing else.`;
             clickRate: this.stats.clickRate || 0,
             isRunning: this.isRunning
         };
+    }
+
+    /**
+     * Get trainer statistics for monitoring
+     */
+    getTrainerStats() {
+        return this.strategyTrainer ? this.strategyTrainer.getStats() : null;
+    }
+
+    /**
+     * Print training status for debugging/monitoring
+     */
+    printTrainingStatus() {
+        if (!this.strategyTrainer) {
+            console.log('❌ Strategy Trainer not initialized');
+            return;
+        }
+        
+        const stats = this.strategyTrainer.getStats();
+        console.log('\n📊 Training Status:');
+        console.log(`   Strategies tracked: ${stats.totalStrategies}`);
+        console.log(`   Personas tracked: ${stats.totalPersonas}`);
+        console.log(`   Combinations tracked: ${stats.totalCombinations}`);
+        
+        console.log('\n🏆 Top 3 Strategies:');
+        stats.topStrategies.slice(0, 3).forEach((s, i) => {
+            console.log(`   ${i + 1}. ${s.strategy}`);
+            console.log(`      Score: ${s.score.toFixed(2)} | Bypass: ${s.bypassRate.toFixed(2)}% | Click: ${s.clickRate.toFixed(2)}% | Attempts: ${s.attempts}`);
+        });
+        
+        console.log('\n🎯 Top 3 Vulnerable Personas:');
+        stats.topVulnerablePersonas.slice(0, 3).forEach((p, i) => {
+            console.log(`   ${i + 1}. ${p.personaName} (ID: ${p.personaId})`);
+            console.log(`      Vulnerability: ${p.vulnerabilityScore.toFixed(2)} | Bypass: ${p.bypassRate.toFixed(2)}% | Click: ${p.clickRate.toFixed(2)}% | Attempts: ${p.attempts}`);
+        });
+        console.log('');
     }
 }
 

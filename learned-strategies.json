@@ -1,0 +1,37 @@
+{
+  "lastUpdated": "2025-11-19T21:57:34.225Z",
+  "strategyScores": {
+    "test|basic|medium": {
+      "attempts": 1,
+      "successes": 1,
+      "bypassRate": 100,
+      "clickRate": 100,
+      "score": 100,
+      "lastUpdated": "2025-11-19T21:57:34.225Z"
+    }
+  },
+  "personaVulnerabilities": {
+    "1": {
+      "attempts": 1,
+      "successes": 1,
+      "bypassRate": 100,
+      "clickRate": 100,
+      "vulnerabilityScore": 100,
+      "lastUpdated": "2025-11-19T21:57:34.225Z"
+    }
+  },
+  "combinations": {
+    "test|basic|medium|1": {
+      "attempts": 1,
+      "successes": 1,
+      "bypassRate": 100,
+      "clickRate": 100,
+      "lastUpdated": "2025-11-19T21:57:34.225Z"
+    }
+  },
+  "learningParams": {
+    "successThreshold": 30,
+    "explorationRate": 0.2,
+    "minAttemptsForLearning": 3
+  }
+}
