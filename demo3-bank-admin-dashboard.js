@@ -256,6 +256,38 @@ class BankAdminDashboard {
         setInterval(() => {
             this.checkOverdueDetections();
         }, 10000);
+        
+        // Sync emails to server for defense monitor every 30 seconds
+        setInterval(() => {
+            this.syncEmailsToServer();
+        }, 30000);
+        
+        // Initial sync
+        setTimeout(() => {
+            this.syncEmailsToServer();
+        }, 2000);
+    }
+    
+    // Sync emails from localStorage to server for defense monitor
+    async syncEmailsToServer() {
+        try {
+            const emails = JSON.parse(localStorage.getItem('demo3_bank_inbox') || '[]');
+            if (emails.length === 0) return;
+            
+            const response = await fetch('/api/defense/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ emails })
+            });
+            
+            if (response.ok) {
+                console.log(`[Defense Sync] Synced ${emails.length} emails to server`);
+            } else {
+                console.warn('[Defense Sync] Failed to sync emails to server');
+            }
+        } catch (error) {
+            console.error('[Defense Sync] Error syncing emails:', error);
+        }
     }
 
     loadEmails() {

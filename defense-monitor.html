@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autonomous Defense System Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0e27;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #667eea;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 15px;
+        }
+        
+        .status-active {
+            background: #00ff88;
+            color: #000;
+        }
+        
+        .status-inactive {
+            background: #ff4444;
+            color: #fff;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: #1a1f3a;
+            border: 2px solid #333;
+            border-radius: 12px;
+            padding: 20px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .card.success {
+            border-left-color: #00ff88;
+        }
+        
+        .card.warning {
+            border-left-color: #ffaa00;
+        }
+        
+        .card.danger {
+            border-left-color: #ff4444;
+        }
+        
+        .card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .card.success h3 {
+            color: #00ff88;
+        }
+        
+        .card.warning h3 {
+            color: #ffaa00;
+        }
+        
+        .card.danger h3 {
+            color: #ff4444;
+        }
+        
+        .card .value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        
+        .card.success .value {
+            color: #00ff88;
+        }
+        
+        .card.warning .value {
+            color: #ffaa00;
+        }
+        
+        .card.danger .value {
+            color: #ff4444;
+        }
+        
+        .card .label {
+            color: #888;
+            font-size: 12px;
+        }
+        
+        .chart-section {
+            background: #1a1f3a;
+            border: 2px solid #333;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .chart-section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-bottom: 20px;
+        }
+        
+        .refresh-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        
+        .refresh-btn:hover {
+            background: #5568d3;
+        }
+        
+        .auto-refresh {
+            color: #888;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+        
+        .department-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .department-item {
+            background: #0f1529;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        
+        .department-item h4 {
+            color: #fff;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .department-item .stats {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .department-item .stat {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+        }
+        
+        .department-item .stat-label {
+            color: #888;
+        }
+        
+        .department-item .stat-value {
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .recent-blocked {
+            background: #1a1f3a;
+            border: 2px solid #333;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .recent-blocked h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+        
+        .email-item {
+            background: #0f1529;
+            border-left: 4px solid #ff4444;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+        }
+        
+        .email-item.blocked {
+            border-left-color: #ff4444;
+        }
+        
+        .email-item.reported {
+            border-left-color: #ffaa00;
+        }
+        
+        .email-item .subject {
+            color: #fff;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .email-item .meta {
+            color: #888;
+            font-size: 12px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .risk-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        
+        .risk-high {
+            background: #ff4444;
+            color: white;
+        }
+        
+        .risk-medium {
+            background: #ffaa00;
+            color: #000;
+        }
+        
+        .risk-low {
+            background: #00ff88;
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            🛡️ Autonomous Defense System Monitor
+            <span id="statusBadge" class="status-badge status-active">Active</span>
+        </h1>
+        
+        <button class="refresh-btn" onclick="loadStatus()">
+            🔄 Refresh
+            <span class="auto-refresh">(Auto-refreshes every 5 seconds)</span>
+        </button>
+        
+        <div id="content">
+            <div class="loading">Loading defense metrics...</div>
+        </div>
+    </div>
+    
+    <script>
+        let departmentChart = null;
+        let timelineChart = null;
+        
+        function formatDate(dateString) {
+            if (!dateString) return 'Never';
+            const date = new Date(dateString);
+            return date.toLocaleString();
+        }
+        
+        function formatTime(minutes) {
+            if (!minutes && minutes !== 0) return 'N/A';
+            if (minutes < 1) return '<1m';
+            if (minutes < 60) return `${Math.round(minutes)}m`;
+            const hours = Math.floor(minutes / 60);
+            const mins = Math.round(minutes % 60);
+            return `${hours}h ${mins}m`;
+        }
+        
+        async function loadStatus() {
+            try {
+                // First get agent status
+                let statusData = { success: false, agent: {}, recentBlocked: [] };
+                let metricsData = { success: false, metrics: {} };
+                
+                try {
+                    const statusResponse = await fetch('/api/defense/status');
+                    if (!statusResponse.ok) {
+                        throw new Error(`HTTP ${statusResponse.status}: ${statusResponse.statusText}`);
+                    }
+                    statusData = await statusResponse.json();
+                } catch (error) {
+                    console.error('Error fetching defense status:', error);
+                    throw new Error(`Failed to fetch defense status: ${error.message}. Make sure the server is running.`);
+                }
+                
+                // Then get detailed metrics
+                try {
+                    const metricsResponse = await fetch('/api/defense/metrics');
+                    if (!metricsResponse.ok) {
+                        throw new Error(`HTTP ${metricsResponse.status}: ${metricsResponse.statusText}`);
+                    }
+                    metricsData = await metricsResponse.json();
+                } catch (error) {
+                    console.error('Error fetching defense metrics:', error);
+                    // Continue with status data only if metrics fail
+                    if (!statusData.success) {
+                        throw new Error(`Failed to fetch defense metrics: ${error.message}. Make sure the server is running.`);
+                    }
+                }
+                
+                if (!statusData.success) {
+                    throw new Error(statusData.error || 'Failed to load defense status');
+                }
+                
+                // Use empty metrics if metrics failed but status succeeded
+                if (!metricsData.success) {
+                    metricsData = { success: true, metrics: {} };
+                }
+                
+                const agent = statusData.agent;
+                const metrics = metricsData.metrics;
+                
+                // Update status badge
+                const statusBadge = document.getElementById('statusBadge');
+                if (agent.isRunning) {
+                    statusBadge.textContent = '🟢 Running';
+                    statusBadge.className = 'status-badge status-active';
+                } else {
+                    statusBadge.textContent = '🔴 Stopped';
+                    statusBadge.className = 'status-badge status-inactive';
+                }
+                
+                // Calculate average risk level of leaked emails (emails that bypassed)
+                const leakedEmails = metrics.bypassedEmails || [];
+                const avgLeakageRisk = leakedEmails.length > 0
+                    ? (leakedEmails.reduce((sum, e) => sum + (e.riskScore || 0), 0) / leakedEmails.length).toFixed(1)
+                    : 0;
+                
+                // Calculate uptime
+                const uptimeText = agent.uptime 
+                    ? `${agent.uptime.days}d ${agent.uptime.hours}h ${agent.uptime.minutes}m`
+                    : 'N/A';
+                
+                // Build content
+                const content = `
+                    <div class="grid">
+                        <div class="card success">
+                            <h3>Total Cycles</h3>
+                            <div class="value">${agent.totalCycles || 0}</div>
+                            <div class="label">Defense cycles executed</div>
+                        </div>
+                        
+                        <div class="card success">
+                            <h3>Emails Analyzed</h3>
+                            <div class="value">${agent.totalEmailsAnalyzed || 0}</div>
+                            <div class="label">Total emails processed by ML</div>
+                        </div>
+                        
+                        <div class="card success">
+                            <h3>Emails Blocked</h3>
+                            <div class="value">${agent.totalEmailsBlocked || 0}</div>
+                            <div class="label">High-risk emails auto-blocked</div>
+                        </div>
+                        
+                        <div class="card warning">
+                            <h3>Emails Reported</h3>
+                            <div class="value">${agent.totalEmailsReported || 0}</div>
+                            <div class="label">Medium-risk emails auto-reported</div>
+                        </div>
+                        
+                        <div class="card success">
+                            <h3>Detection Rate</h3>
+                            <div class="value">${parseFloat(agent.detectionRate || 0).toFixed(1)}%</div>
+                            <div class="label">${(metrics.detectedCount || 0)} detected out of ${metrics.totalEmails || 0} total</div>
+                        </div>
+                        
+                        <div class="card warning">
+                            <h3>Bypass Rate</h3>
+                            <div class="value">${parseFloat(agent.bypassRate || 0).toFixed(1)}%</div>
+                            <div class="label">${agent.totalEmailsBypassed || 0} emails bypassed</div>
+                        </div>
+                        
+                        <div class="card danger">
+                            <h3>Avg Leakage Risk</h3>
+                            <div class="value">${parseFloat(agent.avgLeakageRisk || 0).toFixed(1)}</div>
+                            <div class="label">Average risk score of leaked emails</div>
+                        </div>
+                        
+                        <div class="card">
+                            <h3>Avg Response Time</h3>
+                            <div class="value">${formatTime(agent.avgResponseTime)}</div>
+                            <div class="label">Time to detect and block</div>
+                        </div>
+                        
+                        <div class="card">
+                            <h3>ML Accuracy</h3>
+                            <div class="value">${parseFloat(agent.mlAccuracy || 0).toFixed(1)}%</div>
+                            <div class="label">Decision tree classification confidence</div>
+                        </div>
+                        
+                        <div class="card">
+                            <h3>Uptime</h3>
+                            <div class="value">${uptimeText}</div>
+                            <div class="label">Since ${formatDate(agent.startTime)}</div>
+                        </div>
+                        
+                        <div class="card">
+                            <h3>Last Cycle</h3>
+                            <div class="value" style="font-size: 14px;">${formatDate(agent.lastCycleTime)}</div>
+                            <div class="label">Most recent defense cycle</div>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-section">
+                        <h2>📊 Department Email Distribution</h2>
+                        <div class="chart-container">
+                            <canvas id="departmentChart"></canvas>
+                        </div>
+                        <div class="department-list" id="departmentList"></div>
+                    </div>
+                    
+                    <div class="chart-section">
+                        <h2>📈 Threat Timeline (Last 24 Hours)</h2>
+                        <div class="chart-container">
+                            <canvas id="timelineChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="recent-blocked">
+                        <h2>🚫 Recently Blocked/Reported Emails</h2>
+                        <div id="recentEmails">
+                            ${(statusData.recentBlocked || metrics.recentBlocked || []).length === 0 
+                                ? '<div class="loading">No emails blocked yet. Emails will appear here when detected.</div>'
+                                : (statusData.recentBlocked || metrics.recentBlocked || []).map(email => `
+                                    <div class="email-item ${email.status === 'blocked' ? 'blocked' : 'reported'}">
+                                        <div class="subject">${email.subject || 'No subject'}</div>
+                                        <div class="meta">
+                                            <span>To: ${email.targetPersona?.name || 'Unknown'}</span>
+                                            <span>Dept: ${email.targetPersona?.department || 'Unknown'}</span>
+                                            <span>Risk: <span class="risk-badge risk-${email.riskLevel || 'low'}">${(email.riskLevel || 'low').toUpperCase()}</span> (${email.riskScore || 0}/100)</span>
+                                            <span>${email.autoDetected ? '🤖 Auto' : '👤 Manual'}</span>
+                                            <span>Time: ${formatDate(email.detectedAt || email.receivedAt)}</span>
+                                            ${email.detectionTime ? `<span>Response: ${formatTime(email.detectionTime)}</span>` : ''}
+                                        </div>
+                                    </div>
+                                `).join('')
+                            }
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('content').innerHTML = content;
+                
+                // Create department chart
+                createDepartmentChart(metrics.departments || {});
+                
+                // Create timeline chart
+                createTimelineChart(metrics.timelineData || []);
+                
+                // Store statusData for use in template
+                window.lastStatusData = statusData;
+                
+            } catch (error) {
+                console.error('Defense monitor error:', error);
+                document.getElementById('content').innerHTML = `
+                    <div class="card" style="border-left-color: #ff4444;">
+                        <h3>Error</h3>
+                        <div style="color: #ff4444; margin-bottom: 15px;">${error.message}</div>
+                        <div style="color: #888; margin-top: 10px; font-size: 12px; line-height: 1.6;">
+                            <strong>Troubleshooting steps:</strong><br>
+                            1. Make sure the server is running: <code style="background: #0f1529; padding: 2px 6px; border-radius: 4px;">npm start</code> or <code style="background: #0f1529; padding: 2px 6px; border-radius: 4px;">node local-server.js</code><br>
+                            2. Check that you're accessing the page at: <code style="background: #0f1529; padding: 2px 6px; border-radius: 4px;">http://localhost:3000/defense-monitor.html</code><br>
+                            3. Check the browser console (F12) for more details<br>
+                            4. Verify the server is listening on port 3000
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <button onclick="loadStatus()" style="background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">
+                                🔄 Retry
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        function createDepartmentChart(departments) {
+            const ctx = document.getElementById('departmentChart');
+            if (!ctx) return;
+            
+            const deptNames = Object.keys(departments);
+            const emailCounts = deptNames.map(dept => departments[dept].total || 0);
+            const blockedCounts = deptNames.map(dept => departments[dept].blocked || 0);
+            const bypassedCounts = deptNames.map(dept => departments[dept].bypassed || 0);
+            
+            if (departmentChart) {
+                departmentChart.destroy();
+            }
+            
+            departmentChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: deptNames,
+                    datasets: [
+                        {
+                            label: 'Total Emails',
+                            data: emailCounts,
+                            backgroundColor: 'rgba(102, 126, 234, 0.6)',
+                            borderColor: 'rgba(102, 126, 234, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Blocked',
+                            data: blockedCounts,
+                            backgroundColor: 'rgba(255, 68, 68, 0.6)',
+                            borderColor: 'rgba(255, 68, 68, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Bypassed',
+                            data: bypassedCounts,
+                            backgroundColor: 'rgba(255, 170, 0, 0.6)',
+                            borderColor: 'rgba(255, 170, 0, 1)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#e0e0e0'
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: '#888'
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: '#888'
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Update department list
+            const deptList = document.getElementById('departmentList');
+            if (deptList) {
+                deptList.innerHTML = deptNames.map(dept => {
+                    const deptData = departments[dept];
+                    return `
+                        <div class="department-item">
+                            <h4>${dept}</h4>
+                            <div class="stats">
+                                <div class="stat">
+                                    <span class="stat-label">Total:</span>
+                                    <span class="stat-value">${deptData.total || 0}</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-label">Blocked:</span>
+                                    <span class="stat-value" style="color: #ff4444;">${deptData.blocked || 0}</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-label">Bypassed:</span>
+                                    <span class="stat-value" style="color: #ffaa00;">${deptData.bypassed || 0}</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-label">Detection:</span>
+                                    <span class="stat-value" style="color: #00ff88;">${deptData.detectionRate || 0}%</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+        
+        function createTimelineChart(timelineData) {
+            const ctx = document.getElementById('timelineChart');
+            if (!ctx) return;
+            
+            // Group data by hour
+            const hours = [];
+            const blocked = [];
+            const bypassed = [];
+            
+            // Generate last 24 hours
+            const now = new Date();
+            for (let i = 23; i >= 0; i--) {
+                const hour = new Date(now.getTime() - i * 60 * 60 * 1000);
+                const hourKey = hour.toISOString().substring(0, 13); // YYYY-MM-DDTHH
+                hours.push(hour.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+                
+                const hourData = timelineData.find(d => d.hour === hourKey) || { blocked: 0, bypassed: 0 };
+                blocked.push(hourData.blocked || 0);
+                bypassed.push(hourData.bypassed || 0);
+            }
+            
+            if (timelineChart) {
+                timelineChart.destroy();
+            }
+            
+            timelineChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: hours,
+                    datasets: [
+                        {
+                            label: 'Blocked',
+                            data: blocked,
+                            borderColor: 'rgba(255, 68, 68, 1)',
+                            backgroundColor: 'rgba(255, 68, 68, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: 'Bypassed',
+                            data: bypassed,
+                            borderColor: 'rgba(255, 170, 0, 1)',
+                            backgroundColor: 'rgba(255, 170, 0, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#e0e0e0'
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: '#888'
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: '#888'
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Auto-refresh every 5 seconds
+        loadStatus();
+        setInterval(loadStatus, 5000);
+    </script>
+</body>
+</html>
+

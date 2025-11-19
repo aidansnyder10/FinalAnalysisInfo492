@@ -904,6 +904,332 @@ app.get('/api/agent/status', (req, res) => {
     }
 });
 
+// ============================================================================
+// Defense System API Endpoints
+// ============================================================================
+
+// Endpoint: POST /api/defense/sync
+// Sync emails from browser localStorage to server file
+app.post('/api/defense/sync', (req, res) => {
+    try {
+        const { emails } = req.body;
+        
+        if (!emails || !Array.isArray(emails)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing or invalid emails array'
+            });
+        }
+        
+        const inboxFile = './bank-inbox.json';
+        
+        // Save to file
+        try {
+            fs.writeFileSync(inboxFile, JSON.stringify(emails, null, 2));
+            console.log(`[Defense] Synced ${emails.length} emails from browser to server`);
+        } catch (error) {
+            console.error('[Defense] Error writing inbox file:', error);
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to sync emails',
+                message: error.message
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: `Synced ${emails.length} emails`,
+            totalEmails: emails.length
+        });
+    } catch (error) {
+        console.error('[Defense] Error syncing emails:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            message: error.message
+        });
+    }
+});
+
+// Endpoint: GET /api/defense/status
+// Returns defense agent status (similar to /api/agent/status)
+app.get('/api/defense/status', (req, res) => {
+    try {
+        const metricsFile = './defense-metrics.json';
+        const inboxFile = './bank-inbox.json';
+        
+        let agentStatus = {
+            isRunning: false,
+            totalCycles: 0,
+            totalEmailsAnalyzed: 0,
+            totalEmailsBlocked: 0,
+            totalEmailsReported: 0,
+            totalEmailsBypassed: 0,
+            detectionRate: 0,
+            bypassRate: 0,
+            avgResponseTime: 0,
+            avgLeakageRisk: 0,
+            mlAccuracy: 0,
+            highRiskBlocked: 0,
+            mediumRiskReported: 0,
+            lowRiskAllowed: 0,
+            lastCycleTime: null,
+            startTime: null,
+            uptime: null
+        };
+        
+        let recentBlocked = [];
+        
+        // Load defense agent metrics
+        try {
+            if (fs.existsSync(metricsFile)) {
+                const data = fs.readFileSync(metricsFile, 'utf8');
+                const metrics = JSON.parse(data);
+                
+                // Check if metrics file was updated recently (within last 2 minutes = agent is running)
+                const lastUpdate = metrics.lastCycleTime ? new Date(metrics.lastCycleTime).getTime() : 0;
+                const twoMinutesAgo = Date.now() - (2 * 60 * 1000);
+                const isRecentlyActive = lastUpdate > twoMinutesAgo;
+                
+                if (metrics.startTime) {
+                    const startTime = new Date(metrics.startTime);
+                    const uptime = Date.now() - startTime.getTime();
+                    
+                    agentStatus = {
+                        isRunning: isRecentlyActive, // Running if recently active
+                        totalCycles: metrics.totalCycles || 0,
+                        totalEmailsAnalyzed: metrics.totalEmailsAnalyzed || 0,
+                        totalEmailsBlocked: metrics.totalEmailsBlocked || 0,
+                        totalEmailsReported: metrics.totalEmailsReported || 0,
+                        totalEmailsBypassed: metrics.totalEmailsBypassed || 0,
+                        detectionRate: parseFloat(metrics.detectionRate || 0),
+                        bypassRate: parseFloat(metrics.bypassRate || 0),
+                        avgResponseTime: parseFloat(metrics.avgResponseTime || 0),
+                        avgLeakageRisk: parseFloat(metrics.avgLeakageRisk || 0),
+                        mlAccuracy: parseFloat(metrics.mlAccuracy || 0),
+                        highRiskBlocked: metrics.highRiskBlocked || 0,
+                        mediumRiskReported: metrics.mediumRiskReported || 0,
+                        lowRiskAllowed: metrics.lowRiskAllowed || 0,
+                        lastCycleTime: metrics.lastCycleTime,
+                        startTime: metrics.startTime,
+                        uptime: {
+                            days: Math.floor(uptime / (1000 * 60 * 60 * 24)),
+                            hours: Math.floor((uptime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+                            minutes: Math.floor((uptime % (1000 * 60 * 60)) / (1000 * 60))
+                        }
+                    };
+                }
+            }
+        } catch (error) {
+            console.error('[Defense] Error reading defense metrics:', error);
+            // Continue with default values
+        }
+        
+        // Load recent blocked emails
+        try {
+            if (fs.existsSync(inboxFile)) {
+                const data = fs.readFileSync(inboxFile, 'utf8');
+                const emails = JSON.parse(data);
+                if (Array.isArray(emails)) {
+                    // Get last 10 blocked/reported emails, most recent first
+                    recentBlocked = emails
+                        .filter(e => e && (e.status === 'blocked' || e.status === 'reported'))
+                        .sort((a, b) => {
+                            const timeA = new Date(a.detectedAt || a.receivedAt || a.timestamp || 0).getTime();
+                            const timeB = new Date(b.detectedAt || b.receivedAt || b.timestamp || 0).getTime();
+                            return timeB - timeA;
+                        })
+                        .slice(0, 10);
+                }
+            }
+        } catch (error) {
+            console.error('[Defense] Error reading inbox file:', error);
+            // Continue with empty array
+        }
+        
+        res.json({
+            success: true,
+            agent: agentStatus,
+            recentBlocked: recentBlocked
+        });
+    } catch (error) {
+        console.error('[Defense] Error getting status:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            message: error.message
+        });
+    }
+});
+
+// Endpoint: GET /api/defense/metrics
+// Returns defense system metrics for monitoring
+app.get('/api/defense/metrics', (req, res) => {
+    try {
+        // Load emails from bank inbox
+        // First try the file (synced from agent deployments or browser)
+        const inboxFile = './bank-inbox.json';
+        let emails = [];
+        
+        try {
+            if (fs.existsSync(inboxFile)) {
+                const data = fs.readFileSync(inboxFile, 'utf8');
+                const fileEmails = JSON.parse(data);
+                if (Array.isArray(fileEmails)) {
+                    emails = fileEmails;
+                }
+            }
+        } catch (error) {
+            console.error('[Defense] Error reading inbox file:', error);
+        }
+        
+        // Note: In a real system, this would come from a database
+        // The browser localStorage data can be synced via POST /api/defense/sync
+        
+        // Calculate metrics
+        const totalEmails = emails.length;
+        const blockedEmails = emails.filter(e => e.status === 'blocked');
+        const reportedEmails = emails.filter(e => e.status === 'reported');
+        const autoBlocked = blockedEmails.filter(e => e.autoDetected === true);
+        const autoReported = reportedEmails.filter(e => e.autoDetected === true);
+        const detectedEmails = [...blockedEmails, ...reportedEmails];
+        const bypassedEmails = emails.filter(e => e.status === 'delivered');
+        
+        const blockedCount = blockedEmails.length;
+        const reportedCount = reportedEmails.length;
+        const detectedCount = detectedEmails.length;
+        const bypassedCount = bypassedEmails.length;
+        const autoBlockedCount = autoBlocked.length;
+        const autoReportedCount = autoReported.length;
+        
+        // Detection and bypass rates
+        const detectionRate = totalEmails > 0 ? ((detectedCount / totalEmails) * 100).toFixed(1) : 0;
+        const bypassRate = totalEmails > 0 ? ((bypassedCount / totalEmails) * 100).toFixed(1) : 0;
+        
+        // Average risk level of leaked emails (bypassed emails)
+        const avgLeakageRisk = bypassedEmails.length > 0
+            ? bypassedEmails.reduce((sum, e) => sum + (e.riskScore || 0), 0) / bypassedEmails.length
+            : 0;
+        
+        // Average response time (from detection times)
+        const detectedWithTime = detectedEmails.filter(e => e.detectionTime !== undefined);
+        const avgResponseTime = detectedWithTime.length > 0
+            ? detectedWithTime.reduce((sum, e) => sum + e.detectionTime, 0) / detectedWithTime.length
+            : null;
+        
+        // High risk count
+        const highRiskCount = emails.filter(e => e.riskLevel === 'high').length;
+        
+        // ML accuracy (average confidence from ML classifications)
+        const mlClassified = emails.filter(e => e.mlClassification && e.mlClassification.confidence !== undefined);
+        const mlAccuracy = mlClassified.length > 0
+            ? (mlClassified.reduce((sum, e) => sum + (e.mlClassification.confidence || 0), 0) / mlClassified.length * 100).toFixed(1)
+            : 0;
+        
+        // Department breakdown
+        const departments = {};
+        emails.forEach(email => {
+            const dept = email.targetPersona?.department || 'Unknown';
+            if (!departments[dept]) {
+                departments[dept] = {
+                    total: 0,
+                    blocked: 0,
+                    reported: 0,
+                    bypassed: 0,
+                    detected: 0
+                };
+            }
+            departments[dept].total++;
+            if (email.status === 'blocked') departments[dept].blocked++;
+            else if (email.status === 'reported') departments[dept].reported++;
+            else if (email.status === 'delivered') departments[dept].bypassed++;
+            
+            if (email.status === 'blocked' || email.status === 'reported') {
+                departments[dept].detected++;
+            }
+        });
+        
+        // Calculate detection rates per department
+        Object.keys(departments).forEach(dept => {
+            const deptData = departments[dept];
+            deptData.detectionRate = deptData.total > 0 
+                ? ((deptData.detected / deptData.total) * 100).toFixed(1)
+                : 0;
+        });
+        
+        // Timeline data (last 24 hours)
+        const now = new Date();
+        const timelineData = [];
+        const timelineMap = {};
+        
+        // Initialize 24 hours
+        for (let i = 23; i >= 0; i--) {
+            const hour = new Date(now.getTime() - i * 60 * 60 * 1000);
+            const hourKey = hour.toISOString().substring(0, 13); // YYYY-MM-DDTHH
+            timelineMap[hourKey] = { hour: hourKey, blocked: 0, bypassed: 0 };
+        }
+        
+        // Count emails by hour
+        emails.forEach(email => {
+            const emailTime = new Date(email.receivedAt || email.timestamp || now);
+            const hourKey = emailTime.toISOString().substring(0, 13);
+            
+            if (timelineMap[hourKey]) {
+                if (email.status === 'blocked' || email.status === 'reported') {
+                    timelineMap[hourKey].blocked++;
+                } else if (email.status === 'delivered') {
+                    timelineMap[hourKey].bypassed++;
+                }
+            }
+        });
+        
+        // Convert to array
+        Object.values(timelineMap).forEach(data => {
+            timelineData.push(data);
+        });
+        
+        // Recent blocked/reported emails (last 20)
+        const recentBlocked = [...detectedEmails]
+            .sort((a, b) => {
+                const timeA = new Date(a.detectedAt || a.receivedAt || a.timestamp || 0);
+                const timeB = new Date(b.detectedAt || b.receivedAt || b.timestamp || 0);
+                return timeB - timeA;
+            })
+            .slice(0, 20);
+        
+        res.json({
+            success: true,
+            metrics: {
+                totalEmails,
+                blockedCount,
+                reportedCount,
+                autoBlockedCount,
+                autoReportedCount,
+                detectedCount,
+                bypassedCount,
+                detectionRate: parseFloat(detectionRate),
+                bypassRate: parseFloat(bypassRate),
+                avgLeakageRisk: parseFloat(avgLeakageRisk.toFixed(1)),
+                avgResponseTime,
+                highRiskCount,
+                mlAccuracy: parseFloat(mlAccuracy),
+                departments,
+                timelineData,
+                recentBlocked,
+                bypassedEmails: bypassedEmails.slice(0, 50), // Include for leakage risk calculation
+                timestamp: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('[Defense] Error getting metrics:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            message: error.message
+        });
+    }
+});
+
 // Endpoint: GET /api/agent/metrics
 // Returns current industry metrics for the agent to monitor
 app.get('/api/agent/metrics', (req, res) => {
