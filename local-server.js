@@ -99,39 +99,58 @@ function simulateUserFlow(emailId, userId, campaignId, attackLevel, metadata = {
                 const clickDelayMs = getExponentialDelay(SIMULATION_PARAMS.meanClickDelay) * 60 * 1000;
                 
                 setTimeout(() => {
-                    // Log "clicked" event
-                    const clickedEvent = {
-                        event: 'clicked',
-                        emailId,
-                        userId,
-                        campaignId,
-                        timestamp: Date.now(),
-                        simulated: true,
-                        timeSinceOpened: clickDelayMs / 1000 / 60, // minutes
-                        timeSinceSent: (Date.now() - sentEvent.timestamp) / 1000 / 60 // minutes
-                    };
-                    events.push(clickedEvent);
-                    console.log(`[Simulation] Logged clicked event for email ${emailId} after ${clickedEvent.timeSinceSent.toFixed(1)} minutes`);
-                    
-                    // Some users report after clicking (realized it's phishing)
-                    if (Math.random() < SIMULATION_PARAMS.pReportAfterClick) {
-                        const reportDelayMs = getExponentialDelay(SIMULATION_PARAMS.meanReportDelay) * 60 * 1000;
-                        
-                        setTimeout(() => {
-                            const reportedEvent = {
-                                event: 'reported',
-                                emailId,
-                                userId,
-                                campaignId,
-                                timestamp: Date.now(),
-                                simulated: true,
-                                reportedAfterClick: true,
-                                timeSinceSent: (Date.now() - sentEvent.timestamp) / 1000 / 60 // minutes
-                            };
-                            events.push(reportedEvent);
-                            console.log(`[Simulation] Logged reported event for email ${emailId} after click`);
-                        }, reportDelayMs);
+                    // Check if email is still bypassed (not blocked/reported) before logging click
+                    let emailStillBypassed = true;
+                    try {
+                        const fs = require('fs');
+                        if (fs.existsSync('./bank-inbox.json')) {
+                            const inboxData = fs.readFileSync('./bank-inbox.json', 'utf8');
+                            const emails = JSON.parse(inboxData);
+                            const email = emails.find(e => e.id === emailId);
+                            if (email && (email.status === 'blocked' || email.status === 'reported')) {
+                                emailStillBypassed = false;
+                            }
+                        }
+                    } catch (error) {
+                        // If we can't check, assume it's still bypassed (fail open)
                     }
+                    
+                    // Only log click if email is still bypassed
+                    if (emailStillBypassed) {
+                        // Log "clicked" event
+                        const clickedEvent = {
+                            event: 'clicked',
+                            emailId,
+                            userId,
+                            campaignId,
+                            timestamp: Date.now(),
+                            simulated: true,
+                            timeSinceOpened: clickDelayMs / 1000 / 60, // minutes
+                            timeSinceSent: (Date.now() - sentEvent.timestamp) / 1000 / 60 // minutes
+                        };
+                        events.push(clickedEvent);
+                        console.log(`[Simulation] Logged clicked event for email ${emailId} after ${clickedEvent.timeSinceSent.toFixed(1)} minutes`);
+                        
+                        // Some users report after clicking (realized it's phishing)
+                        if (Math.random() < SIMULATION_PARAMS.pReportAfterClick) {
+                            const reportDelayMs = getExponentialDelay(SIMULATION_PARAMS.meanReportDelay) * 60 * 1000;
+                            
+                            setTimeout(() => {
+                                const reportedEvent = {
+                                    event: 'reported',
+                                    emailId,
+                                    userId,
+                                    campaignId,
+                                    timestamp: Date.now(),
+                                    simulated: true,
+                                    reportedAfterClick: true,
+                                    timeSinceSent: (Date.now() - sentEvent.timestamp) / 1000 / 60 // minutes
+                                };
+                                events.push(reportedEvent);
+                                console.log(`[Simulation] Logged reported event for email ${emailId} after click`);
+                            }, reportDelayMs);
+                        }
+                    } // End if emailStillBypassed
                 }, clickDelayMs);
             } else {
                 // User opened but didn't click - some may report before clicking
@@ -1367,33 +1386,47 @@ app.get('/api/agent/metrics', (req, res) => {
         // Also check inbox file for total count and bypass/detection status
         const inboxFile = './bank-inbox.json';
         let emailsClicked = 0;
+        let bypassedEmails = [];
         try {
             if (fs.existsSync(inboxFile)) {
                 const data = fs.readFileSync(inboxFile, 'utf8');
                 const emails = JSON.parse(data);
                 metrics.totalEmails = emails.length;
                 
-                // Count emails that bypassed (status !== 'blocked' or no status)
-                metrics.bypassed = emails.filter(e => e.status !== 'blocked' && e.status !== 'reported').length;
+                // Count emails that bypassed (status === 'delivered' or no status/undefined)
+                bypassedEmails = emails.filter(e => 
+                    e.status === 'delivered' || 
+                    e.status === undefined || 
+                    e.status === null ||
+                    (e.status !== 'blocked' && e.status !== 'reported')
+                );
+                metrics.bypassed = bypassedEmails.length;
                 metrics.detected = emails.filter(e => e.status === 'blocked' || e.status === 'reported').length;
-                
-                // Count emails that were clicked (read === true indicates engagement)
-                emailsClicked = emails.filter(e => e.read === true).length;
             }
         } catch (error) {
             // Ignore
         }
 
-        // Get click data from engagement events
-        const clickedEvents = events.filter(e => e.event === 'clicked' && !e.phantom);
+        // Get click data from engagement events - ONLY count clicks for emails that bypassed defense
+        const bypassedEmailIds = new Set(bypassedEmails.map(e => e.id));
+        const clickedEvents = events.filter(e => 
+            e.event === 'clicked' && 
+            !e.phantom && 
+            bypassedEmailIds.has(e.emailId)
+        );
         emailsClicked = clickedEvents.length;
+
+        // Calculate click rate based on bypassed emails only (not total)
+        const clickRate = metrics.bypassed > 0 
+            ? ((emailsClicked / metrics.bypassed) * 100).toFixed(2) 
+            : 0;
 
         res.json({
             success: true,
             metrics: {
                 ...metrics,
                 emailsClicked,
-                clickRate: metrics.totalEmails > 0 ? ((emailsClicked / metrics.totalEmails) * 100).toFixed(2) : 0
+                clickRate: parseFloat(clickRate)
             }
         });
     } catch (error) {
