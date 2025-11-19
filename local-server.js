@@ -843,6 +843,7 @@ app.get('/api/agent/status', (req, res) => {
         };
         
         let recentEmails = [];
+        let trainingStats = null;
         
         // Load agent metrics
         try {
@@ -877,6 +878,38 @@ app.get('/api/agent/status', (req, res) => {
             console.error('Error reading agent metrics:', error);
         }
         
+        // Load training stats
+        try {
+            const trainingFile = './learned-strategies.json';
+            if (fs.existsSync(trainingFile)) {
+                const data = fs.readFileSync(trainingFile, 'utf8');
+                const learned = JSON.parse(data);
+                
+                // Calculate summary stats
+                const strategies = Object.keys(learned.strategyScores || {}).map(key => {
+                    const s = learned.strategyScores[key];
+                    return { strategy: key, ...s };
+                }).sort((a, b) => b.score - a.score);
+                
+                const personas = Object.keys(learned.personaVulnerabilities || {}).map(id => {
+                    const p = learned.personaVulnerabilities[id];
+                    return { personaId: id, ...p };
+                }).sort((a, b) => b.vulnerabilityScore - a.vulnerabilityScore);
+                
+                trainingStats = {
+                    lastUpdated: learned.lastUpdated,
+                    totalStrategies: strategies.length,
+                    totalPersonas: personas.length,
+                    totalCombinations: Object.keys(learned.combinations || {}).length,
+                    topStrategies: strategies.slice(0, 5),
+                    topVulnerablePersonas: personas.slice(0, 5),
+                    learningParams: learned.learningParams || {}
+                };
+            }
+        } catch (error) {
+            console.error('Error reading training stats:', error);
+        }
+        
         // Load recent emails
         try {
             if (fs.existsSync(inboxFile)) {
@@ -892,10 +925,80 @@ app.get('/api/agent/status', (req, res) => {
         res.json({
             success: true,
             agent: agentStatus,
+            training: trainingStats,
             recentEmails: recentEmails
         });
     } catch (error) {
         console.error('[Agent] Error getting status:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            message: error.message
+        });
+    }
+});
+
+// Endpoint: GET /api/agent/training-stats
+// Returns detailed training statistics from the strategy trainer
+app.get('/api/agent/training-stats', (req, res) => {
+    try {
+        const trainingFile = './learned-strategies.json';
+        
+        if (!fs.existsSync(trainingFile)) {
+            return res.json({
+                success: true,
+                training: null,
+                message: 'Training data not available yet (agent needs to run at least one cycle)'
+            });
+        }
+        
+        const data = fs.readFileSync(trainingFile, 'utf8');
+        const learned = JSON.parse(data);
+        
+        // Calculate detailed stats
+        const strategies = Object.keys(learned.strategyScores || {}).map(key => {
+            const s = learned.strategyScores[key];
+            return { strategy: key, ...s };
+        }).sort((a, b) => b.score - a.score);
+        
+        const personas = Object.keys(learned.personaVulnerabilities || {}).map(id => {
+            const p = learned.personaVulnerabilities[id];
+            return { personaId: id, ...p };
+        }).sort((a, b) => b.vulnerabilityScore - a.vulnerabilityScore);
+        
+        const combinations = Object.keys(learned.combinations || {}).map(key => {
+            const c = learned.combinations[key];
+            return { combination: key, ...c };
+        }).sort((a, b) => {
+            const scoreA = (a.bypassRate || 0) * 0.7 + (a.clickRate || 0) * 0.3;
+            const scoreB = (b.bypassRate || 0) * 0.7 + (b.clickRate || 0) * 0.3;
+            return scoreB - scoreA;
+        });
+        
+        res.json({
+            success: true,
+            training: {
+                lastUpdated: learned.lastUpdated,
+                summary: {
+                    totalStrategies: strategies.length,
+                    totalPersonas: personas.length,
+                    totalCombinations: combinations.length
+                },
+                topStrategies: strategies.slice(0, 10),
+                topVulnerablePersonas: personas.slice(0, 10),
+                topCombinations: combinations.slice(0, 10),
+                allStrategies: strategies,
+                allPersonas: personas,
+                learningParams: learned.learningParams || {},
+                raw: {
+                    strategyScores: learned.strategyScores,
+                    personaVulnerabilities: learned.personaVulnerabilities,
+                    combinations: learned.combinations
+                }
+            }
+        });
+    } catch (error) {
+        console.error('[Agent] Error getting training stats:', error);
         res.status(500).json({
             success: false,
             error: 'Internal server error',

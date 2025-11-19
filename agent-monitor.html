@@ -190,7 +190,7 @@
                     throw new Error(data.error || 'Failed to load status');
                 }
                 
-                const { agent, recentEmails } = data;
+                const { agent, recentEmails, training } = data;
                 
                 // Update status badge
                 const statusBadge = document.getElementById('statusBadge');
@@ -302,6 +302,71 @@
                             </div>
                         </div>
                     </div>
+                    
+                    ${training ? `
+                    <div class="emails-section" style="border-left-color: #667eea;">
+                        <h2>🧠 Self-Training Results</h2>
+                        <div style="background: #0f1529; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                            <div style="color: #888; font-size: 12px; margin-bottom: 10px;">Training Summary</div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                                <div>
+                                    <div style="color: #667eea; font-size: 20px; font-weight: bold;">${training.totalStrategies}</div>
+                                    <div style="color: #666; font-size: 11px;">Strategies Tracked</div>
+                                </div>
+                                <div>
+                                    <div style="color: #667eea; font-size: 20px; font-weight: bold;">${training.totalPersonas}</div>
+                                    <div style="color: #666; font-size: 11px;">Personas Tracked</div>
+                                </div>
+                                <div>
+                                    <div style="color: #667eea; font-size: 20px; font-weight: bold;">${training.totalCombinations}</div>
+                                    <div style="color: #666; font-size: 11px;">Combinations</div>
+                                </div>
+                                <div>
+                                    <div style="color: #888; font-size: 12px;">Last Updated</div>
+                                    <div style="color: #666; font-size: 11px; margin-top: 5px;">${formatDate(training.lastUpdated)}</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        ${training.topStrategies && training.topStrategies.length > 0 ? `
+                        <div style="background: #0f1529; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                            <div style="color: #888; font-size: 12px; margin-bottom: 10px; font-weight: bold;">🏆 Top Performing Strategies</div>
+                            ${training.topStrategies.slice(0, 3).map((s, i) => `
+                                <div style="padding: 10px; margin-bottom: 8px; background: #0a0e27; border-radius: 6px; border-left: 3px solid ${i === 0 ? '#00ff88' : i === 1 ? '#ffaa00' : '#667eea'};">
+                                    <div style="color: #e0e0e0; font-size: 13px; margin-bottom: 5px;">
+                                        <strong>${i + 1}. ${s.strategy}</strong>
+                                    </div>
+                                    <div style="display: flex; gap: 15px; font-size: 11px; color: #888;">
+                                        <span>Score: <strong style="color: #00ff88;">${s.score.toFixed(1)}</strong></span>
+                                        <span>Bypass: <strong style="color: #00ff88;">${s.bypassRate.toFixed(1)}%</strong></span>
+                                        <span>Click: <strong style="color: #ffaa00;">${s.clickRate.toFixed(1)}%</strong></span>
+                                        <span>Attempts: <strong style="color: #667eea;">${s.attempts}</strong></span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        ` : ''}
+                        
+                        ${training.topVulnerablePersonas && training.topVulnerablePersonas.length > 0 ? `
+                        <div style="background: #0f1529; padding: 15px; border-radius: 8px;">
+                            <div style="color: #888; font-size: 12px; margin-bottom: 10px; font-weight: bold;">🎯 Most Vulnerable Targets</div>
+                            ${training.topVulnerablePersonas.slice(0, 3).map((p, i) => `
+                                <div style="padding: 10px; margin-bottom: 8px; background: #0a0e27; border-radius: 6px; border-left: 3px solid ${i === 0 ? '#ff4444' : i === 1 ? '#ff6b6b' : '#ff8888'};">
+                                    <div style="color: #e0e0e0; font-size: 13px; margin-bottom: 5px;">
+                                        <strong>${i + 1}. Persona ID: ${p.personaId}</strong>
+                                    </div>
+                                    <div style="display: flex; gap: 15px; font-size: 11px; color: #888;">
+                                        <span>Vulnerability: <strong style="color: #ff4444;">${p.vulnerabilityScore.toFixed(1)}</strong></span>
+                                        <span>Bypass: <strong style="color: #00ff88;">${p.bypassRate.toFixed(1)}%</strong></span>
+                                        <span>Click: <strong style="color: #ffaa00;">${p.clickRate.toFixed(1)}%</strong></span>
+                                        <span>Attempts: <strong style="color: #667eea;">${p.attempts}</strong></span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        ` : ''}
+                    </div>
+                    ` : ''}
                     
                     <div class="emails-section">
                         <h2>📧 Recent Emails Deployed (Last 10)</h2>
