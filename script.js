@@ -710,7 +710,7 @@ function switchDemo(demoType) {
         event.target.classList.add('active');
     } else {
         // Fallback if event is not available
-        document.querySelectorAll('.tab-btn').forEach((btn, index) => {
+        document.querySelectorAll('.tab-btn').forEach((btn) => {
             if (btn.textContent.includes(demoType.replace('demo', 'Demo'))) {
                 btn.classList.add('active');
             }

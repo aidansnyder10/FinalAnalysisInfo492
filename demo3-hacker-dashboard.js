@@ -18,8 +18,110 @@ class HackerDashboard {
         this.setupEventListeners();
         this.setupEvaluationMetricsListener();
         this.setupCoverageTracking();
+        this.setupDefenseInteractionTracking();
         this.updateKPIs();
         this.updateQuickStats();
+    }
+    
+    setupDefenseInteractionTracking() {
+        // Poll for defense interaction results every 5 seconds
+        setInterval(() => {
+            this.loadDefenseInteractionResults();
+        }, 5000);
+        
+        // Load initial results
+        this.loadDefenseInteractionResults();
+    }
+    
+    async loadDefenseInteractionResults() {
+        try {
+            // Fetch agent metrics which includes bypass/detection data
+            const response = await fetch('/api/agent/metrics');
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            if (data.success && data.metrics) {
+                const metrics = data.metrics;
+                
+                // Update KPIs with real defense interaction data
+                const totalEmails = metrics.totalEmails || 0;
+                const bypassed = metrics.bypassed || 0;
+                const detected = metrics.detected || 0;
+                
+                if (totalEmails > 0) {
+                    const bypassRate = ((bypassed / totalEmails) * 100).toFixed(1);
+                    document.getElementById('kpi-success-rate').textContent = `${bypassRate}%`;
+                    document.getElementById('kpi-success-change').textContent = `${detected} detected, ${bypassed} bypassed`;
+                }
+                
+                // Also fetch recent emails to show individual defense results
+                this.updateDefenseResultsDisplay(metrics);
+            }
+        } catch (error) {
+            console.error('[Hacker Dashboard] Error loading defense interaction results:', error);
+        }
+    }
+    
+    updateDefenseResultsDisplay(metrics) {
+        // Update the evaluation panel with defense interaction data if it exists
+        const evalPanel = document.getElementById('evaluationMetricsPanel');
+        if (!evalPanel) return;
+        
+        // Add defense interaction section if it doesn't exist
+        let defenseSection = document.getElementById('defenseInteractionSection');
+        if (!defenseSection) {
+            defenseSection = document.createElement('div');
+            defenseSection.id = 'defenseInteractionSection';
+            defenseSection.style.cssText = 'background: #1a1f3a; border: 2px solid #333; border-radius: 12px; padding: 20px; margin-top: 20px;';
+            evalPanel.appendChild(defenseSection);
+        }
+        
+        const totalEmails = metrics.totalEmails || 0;
+        const bypassed = metrics.bypassed || 0;
+        const detected = metrics.detected || 0;
+        const clicked = metrics.emailsClicked || 0;
+        const bypassRate = totalEmails > 0 ? ((bypassed / totalEmails) * 100).toFixed(1) : 0;
+        const detectionRate = totalEmails > 0 ? ((detected / totalEmails) * 100).toFixed(1) : 0;
+        const clickRate = totalEmails > 0 ? ((clicked / totalEmails) * 100).toFixed(1) : 0;
+        
+        defenseSection.innerHTML = `
+            <h3 style="color: #ff4444; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-shield-alt"></i> Defense Interaction Results
+            </h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                <div style="background: #0f1529; padding: 15px; border-radius: 8px; border-left: 4px solid #00ff88;">
+                    <div style="color: #888; font-size: 12px; margin-bottom: 5px;">Bypassed</div>
+                    <div style="color: #00ff88; font-size: 24px; font-weight: bold;">${bypassed}</div>
+                    <div style="color: #666; font-size: 11px; margin-top: 5px;">${bypassRate}% bypass rate</div>
+                </div>
+                <div style="background: #0f1529; padding: 15px; border-radius: 8px; border-left: 4px solid #ff4444;">
+                    <div style="color: #888; font-size: 12px; margin-bottom: 5px;">Detected/Blocked</div>
+                    <div style="color: #ff4444; font-size: 24px; font-weight: bold;">${detected}</div>
+                    <div style="color: #666; font-size: 11px; margin-top: 5px;">${detectionRate}% detection rate</div>
+                </div>
+                <div style="background: #0f1529; padding: 15px; border-radius: 8px; border-left: 4px solid #ffaa00;">
+                    <div style="color: #888; font-size: 12px; margin-bottom: 5px;">Clicked</div>
+                    <div style="color: #ffaa00; font-size: 24px; font-weight: bold;">${clicked}</div>
+                    <div style="color: #666; font-size: 11px; margin-top: 5px;">${clickRate}% click rate</div>
+                </div>
+                <div style="background: #0f1529; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea;">
+                    <div style="color: #888; font-size: 12px; margin-bottom: 5px;">Total Emails</div>
+                    <div style="color: #667eea; font-size: 24px; font-weight: bold;">${totalEmails}</div>
+                    <div style="color: #666; font-size: 11px; margin-top: 5px;">All attacks</div>
+                </div>
+            </div>
+            <div style="background: #0f1529; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; margin-top: 15px;">
+                <div style="color: #888; font-size: 12px; margin-bottom: 10px;">Attack Success Summary</div>
+                <div style="color: #e0e0e0; font-size: 14px; line-height: 1.8;">
+                    <div><strong style="color: #00ff88;">${bypassed}</strong> emails successfully bypassed defense filters</div>
+                    <div><strong style="color: #ff4444;">${detected}</strong> emails were detected and blocked by defense system</div>
+                    <div><strong style="color: #ffaa00;">${clicked}</strong> emails were clicked by targets (engagement)</div>
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #333;">
+                        <strong>Overall Attack Effectiveness:</strong> ${bypassRate}% bypass rate, ${clickRate}% click rate
+                    </div>
+                </div>
+            </div>
+        `;
     }
     
     setupCoverageTracking() {

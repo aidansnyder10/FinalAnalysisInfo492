@@ -267,21 +267,63 @@
                     </div>
                     
                     <div class="emails-section">
+                        <h2>🛡️ Defense Interaction Results</h2>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                            <div style="background: #0f1529; padding: 15px; border-radius: 8px; border-left: 4px solid #00ff88;">
+                                <div style="color: #888; font-size: 12px; margin-bottom: 5px;">Bypassed</div>
+                                <div style="color: #00ff88; font-size: 24px; font-weight: bold;">${emailsBypassed}</div>
+                                <div style="color: #666; font-size: 11px; margin-top: 5px;">${bypassRate.toFixed(1)}% bypass rate</div>
+                            </div>
+                            <div style="background: #0f1529; padding: 15px; border-radius: 8px; border-left: 4px solid #ff4444;">
+                                <div style="color: #888; font-size: 12px; margin-bottom: 5px;">Detected/Blocked</div>
+                                <div style="color: #ff4444; font-size: 24px; font-weight: bold;">${emailsDetected}</div>
+                                <div style="color: #666; font-size: 11px; margin-top: 5px;">${emailsBypassed + emailsDetected > 0 ? ((emailsDetected / (emailsBypassed + emailsDetected)) * 100).toFixed(1) : 0}% detection rate</div>
+                            </div>
+                            <div style="background: #0f1529; padding: 15px; border-radius: 8px; border-left: 4px solid #ffaa00;">
+                                <div style="color: #888; font-size: 12px; margin-bottom: 5px;">Clicked</div>
+                                <div style="color: #ffaa00; font-size: 24px; font-weight: bold;">${emailsClicked}</div>
+                                <div style="color: #666; font-size: 11px; margin-top: 5px;">${clickRate.toFixed(1)}% click rate</div>
+                            </div>
+                            <div style="background: #0f1529; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea;">
+                                <div style="color: #888; font-size: 12px; margin-bottom: 5px;">Total Emails</div>
+                                <div style="color: #667eea; font-size: 24px; font-weight: bold;">${emailsBypassed + emailsDetected}</div>
+                                <div style="color: #666; font-size: 11px; margin-top: 5px;">All attacks</div>
+                            </div>
+                        </div>
+                        <div style="background: #0f1529; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; margin-bottom: 20px;">
+                            <div style="color: #888; font-size: 12px; margin-bottom: 10px;">Attack Success Summary</div>
+                            <div style="color: #e0e0e0; font-size: 14px; line-height: 1.8;">
+                                <div><strong style="color: #00ff88;">${emailsBypassed}</strong> emails successfully bypassed defense filters</div>
+                                <div><strong style="color: #ff4444;">${emailsDetected}</strong> emails were detected and blocked by defense system</div>
+                                <div><strong style="color: #ffaa00;">${emailsClicked}</strong> emails were clicked by targets (engagement)</div>
+                                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #333;">
+                                    <strong>Overall Attack Effectiveness:</strong> ${bypassRate.toFixed(1)}% bypass rate, ${clickRate.toFixed(1)}% click rate
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="emails-section">
                         <h2>📧 Recent Emails Deployed (Last 10)</h2>
                         ${recentEmails.length === 0 
                             ? '<div class="loading">No emails deployed yet. The agent will generate emails every 5 minutes.</div>'
-                            : recentEmails.map(email => `
-                                <div class="email-item">
+                            : recentEmails.map(email => {
+                                const statusColor = email.status === 'blocked' ? '#ff4444' : email.status === 'reported' ? '#ffaa00' : '#00ff88';
+                                const statusText = email.status === 'blocked' ? 'BLOCKED' : email.status === 'reported' ? 'REPORTED' : email.status === 'delivered' ? 'BYPASSED' : 'PENDING';
+                                return `
+                                <div class="email-item" style="border-left-color: ${statusColor};">
                                     <div class="subject">${email.subject || 'No subject'}</div>
                                     <div class="meta">
                                         <span>To: ${email.targetPersona?.name || 'Unknown'}</span>
                                         <span>Model: ${email.model || 'Unknown'}</span>
                                         <span>Level: ${email.attackLevel || 'Unknown'}</span>
                                         <span>Risk: ${email.riskScore || 0}/100</span>
+                                        <span style="color: ${statusColor}; font-weight: bold;">Status: ${statusText}</span>
                                         <span>Time: ${formatDate(email.receivedAt)}</span>
                                     </div>
                                 </div>
-                            `).join('')
+                            `;
+                            }).join('')
                         }
                     </div>
                 `;
