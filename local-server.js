@@ -288,6 +288,394 @@ app.post('/events/generated', (req, res) => {
     }
 });
 
+// Endpoint: GET /coverage/metrics
+// Returns phishing coverage metrics
+app.get('/coverage/metrics', (req, res) => {
+    try {
+        const { campaignId, timeWindow } = req.query;
+        
+        // Load coverage data from localStorage (via file system for server-side)
+        // In a real system, this would be in a database
+        const coverageFile = './coverage-data.json';
+        let coverageData = { emails: {}, campaigns: {}, departments: {} };
+        
+        if (fs.existsSync(coverageFile)) {
+            try {
+                const data = fs.readFileSync(coverageFile, 'utf8');
+                coverageData = JSON.parse(data);
+            } catch (e) {
+                console.error('[Coverage] Error reading coverage file:', e);
+            }
+        }
+        
+        // Calculate metrics
+        let emails = Object.values(coverageData.emails || {});
+        
+        if (campaignId) {
+            emails = emails.filter(e => e.campaignId === campaignId);
+        }
+        
+        if (timeWindow) {
+            const cutoffTime = new Date(Date.now() - parseInt(timeWindow) * 60 * 60 * 1000);
+            emails = emails.filter(e => e.deliveredAt && new Date(e.deliveredAt) >= cutoffTime);
+        }
+        
+        const total = emails.length;
+        const delivered = emails.filter(e => e.delivered).length;
+        const opened = emails.filter(e => e.opened).length;
+        const clicked = emails.filter(e => e.clicked).length;
+        const reported = emails.filter(e => e.reported).length;
+        
+        // Department breakdown
+        const departments = {};
+        emails.forEach(email => {
+            const dept = email.department || 'Unknown';
+            if (!departments[dept]) {
+                departments[dept] = { total: 0, opened: 0, clicked: 0, reported: 0 };
+            }
+            departments[dept].total++;
+            if (email.opened) departments[dept].opened++;
+            if (email.clicked) departments[dept].clicked++;
+            if (email.reported) departments[dept].reported++;
+        });
+        
+        Object.keys(departments).forEach(dept => {
+            const deptData = departments[dept];
+            deptData.coveragePercent = deptData.total > 0 ? (deptData.opened / deptData.total * 100).toFixed(1) : 0;
+            deptData.clickRate = deptData.total > 0 ? (deptData.clicked / deptData.total * 100).toFixed(1) : 0;
+        });
+        
+        res.json({
+            success: true,
+            metrics: {
+                total,
+                delivered,
+                opened,
+                clicked,
+                reported,
+                coveragePercent: total > 0 ? (opened / total * 100).toFixed(1) : 0,
+                clickRate: total > 0 ? (clicked / total * 100).toFixed(1) : 0,
+                clickThroughRate: opened > 0 ? (clicked / opened * 100).toFixed(1) : 0,
+                reportRate: total > 0 ? (reported / total * 100).toFixed(1) : 0,
+                departments,
+                timestamp: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('[Coverage] Error calculating coverage metrics:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Endpoint: POST /coverage/track
+// Track email interaction events
+app.post('/coverage/track', (req, res) => {
+    try {
+        const { emailId, event, emailData } = req.body;
+        
+        if (!emailId || !event) {
+            return res.status(400).json({ success: false, error: 'Missing emailId or event' });
+        }
+        
+        // Load and update coverage data
+        const coverageFile = './coverage-data.json';
+        let coverageData = { emails: {}, campaigns: {}, departments: {} };
+        
+        if (fs.existsSync(coverageFile)) {
+            try {
+                const data = fs.readFileSync(coverageFile, 'utf8');
+                coverageData = JSON.parse(data);
+            } catch (e) {
+                console.error('[Coverage] Error reading coverage file:', e);
+            }
+        }
+        
+        // Initialize email entry if needed
+        if (!coverageData.emails[emailId] && emailData) {
+            coverageData.emails[emailId] = {
+                emailId,
+                campaignId: emailData.campaignId,
+                targetPersona: emailData.targetPersona,
+                department: emailData.targetPersona?.department || 'Unknown',
+                company: emailData.targetPersona?.company || 'Unknown',
+                delivered: false,
+                opened: false,
+                clicked: false,
+                reported: false
+            };
+        }
+        
+        const email = coverageData.emails[emailId];
+        if (!email) {
+            return res.status(404).json({ success: false, error: 'Email not found' });
+        }
+        
+        // Update based on event type
+        const timestamp = new Date().toISOString();
+        switch (event) {
+            case 'delivered':
+                email.delivered = true;
+                email.deliveredAt = timestamp;
+                break;
+            case 'opened':
+                email.opened = true;
+                email.openedAt = timestamp;
+                if (email.deliveredAt) {
+                    email.timeToOpen = (new Date(timestamp) - new Date(email.deliveredAt)) / (1000 * 60);
+                }
+                break;
+            case 'clicked':
+                email.clicked = true;
+                email.clickedAt = timestamp;
+                if (email.openedAt) {
+                    email.timeToClick = (new Date(timestamp) - new Date(email.openedAt)) / (1000 * 60);
+                }
+                break;
+            case 'reported':
+                email.reported = true;
+                email.reportedAt = timestamp;
+                break;
+        }
+        
+        // Save coverage data
+        coverageData.lastUpdated = timestamp;
+        fs.writeFileSync(coverageFile, JSON.stringify(coverageData, null, 2));
+        
+        res.json({ success: true, message: `Tracked ${event} for email ${emailId}` });
+    } catch (error) {
+        console.error('[Coverage] Error tracking event:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============================================================================
+// API Endpoints for Phishing Coverage Tracking
+// ============================================================================
+
+// Endpoint: GET /coverage/metrics
+// Returns phishing coverage metrics
+app.get('/coverage/metrics', (req, res) => {
+    try {
+        const { campaignId, timeWindow } = req.query;
+        
+        // Load coverage data from localStorage (via file system for server-side)
+        // In a real system, this would be in a database
+        const coverageFile = './coverage-data.json';
+        let coverageData = { emails: {}, campaigns: {}, departments: {} };
+        
+        if (fs.existsSync(coverageFile)) {
+            try {
+                const data = fs.readFileSync(coverageFile, 'utf8');
+                coverageData = JSON.parse(data);
+            } catch (e) {
+                console.error('[Coverage] Error reading coverage file:', e);
+            }
+        }
+        
+        // Also check events for real-time coverage
+        let emails = Object.values(coverageData.emails || {});
+        
+        // Sync with events if available
+        const sentEvents = events.filter(e => e.event === 'sent');
+        sentEvents.forEach(event => {
+            if (!coverageData.emails[event.emailId]) {
+                // Try to get email data from bank inbox (localStorage simulation)
+                // In production, this would come from a database
+                coverageData.emails[event.emailId] = {
+                    emailId: event.emailId,
+                    campaignId: event.campaignId,
+                    department: 'Unknown',
+                    company: 'Unknown',
+                    delivered: true,
+                    deliveredAt: new Date(event.timestamp).toISOString(),
+                    opened: false,
+                    clicked: false,
+                    reported: false
+                };
+            }
+        });
+        
+        // Update from events
+        events.forEach(event => {
+            const email = coverageData.emails[event.emailId];
+            if (email) {
+                if (event.event === 'opened' && !email.opened) {
+                    email.opened = true;
+                    email.openedAt = new Date(event.timestamp).toISOString();
+                    if (email.deliveredAt) {
+                        email.timeToOpen = (new Date(event.timestamp) - new Date(email.deliveredAt)) / (1000 * 60);
+                    }
+                }
+                if (event.event === 'clicked' && !email.clicked) {
+                    email.clicked = true;
+                    email.clickedAt = new Date(event.timestamp).toISOString();
+                    if (email.openedAt) {
+                        email.timeToClick = (new Date(event.timestamp) - new Date(email.openedAt)) / (1000 * 60);
+                    }
+                }
+                if (event.event === 'reported' && !email.reported) {
+                    email.reported = true;
+                    email.reportedAt = new Date(event.timestamp).toISOString();
+                }
+            }
+        });
+        
+        // Filter by campaign if provided
+        if (campaignId) {
+            emails = Object.values(coverageData.emails).filter(e => e.campaignId === campaignId);
+        } else {
+            emails = Object.values(coverageData.emails);
+        }
+        
+        // Filter by time window if provided (in hours)
+        if (timeWindow) {
+            const cutoffTime = new Date(Date.now() - parseInt(timeWindow) * 60 * 60 * 1000);
+            emails = emails.filter(e => e.deliveredAt && new Date(e.deliveredAt) >= cutoffTime);
+        }
+        
+        const total = emails.length;
+        const delivered = emails.filter(e => e.delivered).length;
+        const opened = emails.filter(e => e.opened).length;
+        const clicked = emails.filter(e => e.clicked).length;
+        const reported = emails.filter(e => e.reported).length;
+        
+        // Department breakdown
+        const departments = {};
+        emails.forEach(email => {
+            const dept = email.department || 'Unknown';
+            if (!departments[dept]) {
+                departments[dept] = { total: 0, opened: 0, clicked: 0, reported: 0 };
+            }
+            departments[dept].total++;
+            if (email.opened) departments[dept].opened++;
+            if (email.clicked) departments[dept].clicked++;
+            if (email.reported) departments[dept].reported++;
+        });
+        
+        Object.keys(departments).forEach(dept => {
+            const deptData = departments[dept];
+            deptData.coveragePercent = deptData.total > 0 ? (deptData.opened / deptData.total * 100).toFixed(1) : 0;
+            deptData.clickRate = deptData.total > 0 ? (deptData.clicked / deptData.total * 100).toFixed(1) : 0;
+            deptData.reportRate = deptData.total > 0 ? (deptData.reported / deptData.total * 100).toFixed(1) : 0;
+        });
+        
+        // Calculate average times
+        const openedEmails = emails.filter(e => e.opened && e.timeToOpen !== null);
+        const avgTimeToOpen = openedEmails.length > 0
+            ? openedEmails.reduce((sum, e) => sum + e.timeToOpen, 0) / openedEmails.length
+            : null;
+        
+        const clickedEmails = emails.filter(e => e.clicked && e.timeToClick !== null);
+        const avgTimeToClick = clickedEmails.length > 0
+            ? clickedEmails.reduce((sum, e) => sum + e.timeToClick, 0) / clickedEmails.length
+            : null;
+        
+        res.json({
+            success: true,
+            metrics: {
+                total,
+                delivered,
+                opened,
+                clicked,
+                reported,
+                coveragePercent: total > 0 ? (opened / total * 100).toFixed(1) : 0,
+                clickRate: total > 0 ? (clicked / total * 100).toFixed(1) : 0,
+                clickThroughRate: opened > 0 ? (clicked / opened * 100).toFixed(1) : 0,
+                reportRate: total > 0 ? (reported / total * 100).toFixed(1) : 0,
+                avgTimeToOpen: avgTimeToOpen ? avgTimeToOpen.toFixed(1) : null,
+                avgTimeToClick: avgTimeToClick ? avgTimeToClick.toFixed(1) : null,
+                departments,
+                timestamp: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('[Coverage] Error calculating coverage metrics:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Endpoint: POST /coverage/track
+// Track email interaction events
+app.post('/coverage/track', (req, res) => {
+    try {
+        const { emailId, event, emailData } = req.body;
+        
+        if (!emailId || !event) {
+            return res.status(400).json({ success: false, error: 'Missing emailId or event' });
+        }
+        
+        // Load and update coverage data
+        const coverageFile = './coverage-data.json';
+        let coverageData = { emails: {}, campaigns: {}, departments: {} };
+        
+        if (fs.existsSync(coverageFile)) {
+            try {
+                const data = fs.readFileSync(coverageFile, 'utf8');
+                coverageData = JSON.parse(data);
+            } catch (e) {
+                console.error('[Coverage] Error reading coverage file:', e);
+            }
+        }
+        
+        // Initialize email entry if needed
+        if (!coverageData.emails[emailId] && emailData) {
+            coverageData.emails[emailId] = {
+                emailId,
+                campaignId: emailData.campaignId,
+                targetPersona: emailData.targetPersona,
+                department: emailData.targetPersona?.department || 'Unknown',
+                company: emailData.targetPersona?.company || 'Unknown',
+                delivered: false,
+                opened: false,
+                clicked: false,
+                reported: false
+            };
+        }
+        
+        const email = coverageData.emails[emailId];
+        if (!email) {
+            return res.status(404).json({ success: false, error: 'Email not found' });
+        }
+        
+        // Update based on event type
+        const timestamp = new Date().toISOString();
+        switch (event) {
+            case 'delivered':
+                email.delivered = true;
+                email.deliveredAt = timestamp;
+                break;
+            case 'opened':
+                email.opened = true;
+                email.openedAt = timestamp;
+                if (email.deliveredAt) {
+                    email.timeToOpen = (new Date(timestamp) - new Date(email.deliveredAt)) / (1000 * 60);
+                }
+                break;
+            case 'clicked':
+                email.clicked = true;
+                email.clickedAt = timestamp;
+                if (email.openedAt) {
+                    email.timeToClick = (new Date(timestamp) - new Date(email.openedAt)) / (1000 * 60);
+                }
+                break;
+            case 'reported':
+                email.reported = true;
+                email.reportedAt = timestamp;
+                break;
+        }
+        
+        // Save coverage data
+        coverageData.lastUpdated = timestamp;
+        fs.writeFileSync(coverageFile, JSON.stringify(coverageData, null, 2));
+        
+        console.log(`[Coverage] Tracked ${event} for email ${emailId}`);
+        res.json({ success: true, message: `Tracked ${event} for email ${emailId}` });
+    } catch (error) {
+        console.error('[Coverage] Error tracking event:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Endpoint: GET /metrics/latest
 // Returns current engagement metrics
 app.get('/metrics/latest', (req, res) => {

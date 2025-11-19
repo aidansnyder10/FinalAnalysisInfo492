@@ -5,6 +5,8 @@ class BankAdminDashboard {
         this.selectedEmail = null;
         this.autoDetectionEnabled = true; // Enabled by default
         this.detectionSettings = this.loadDetectionSettings();
+        this.coverageTracker = new PhishingCoverageTracker();
+        this.coverageMetrics = null;
         
         // Initialize Decision Tree Classifier for ML-based risk assessment
         this.decisionTreeClassifier = new DecisionTreeClassifier();
@@ -53,6 +55,7 @@ class BankAdminDashboard {
     init() {
         this.loadEmails();
         this.setupEventListeners();
+        this.setupCoverageTracking();
         this.displayEmails();
         this.updateKPIs();
         this.updateSecurityStatus();
@@ -61,6 +64,156 @@ class BankAdminDashboard {
         
         // Start automated security analysis for existing emails
         this.processPendingEmails();
+    }
+    
+    setupCoverageTracking() {
+        // Poll for coverage metrics updates
+        setInterval(() => {
+            this.loadCoverageMetrics();
+        }, 5000); // Poll every 5 seconds
+        
+        // Load initial coverage metrics
+        this.loadCoverageMetrics();
+    }
+    
+    // Load coverage metrics from API
+    async loadCoverageMetrics() {
+        try {
+            const response = await fetch('/coverage/metrics');
+            if (!response.ok) {
+                console.warn('[Coverage] Failed to load coverage metrics');
+                return;
+            }
+            
+            const data = await response.json();
+            if (data.success && data.metrics) {
+                this.coverageMetrics = data.metrics;
+                this.updateCoverageDisplay();
+                this.checkCoverageAlerts();
+                
+                // Also sync with local coverage tracker
+                if (this.coverageTracker) {
+                    // Sync with engagement events from API
+                    try {
+                        const eventsResponse = await fetch('/events');
+                        if (eventsResponse.ok) {
+                            const eventsData = await eventsResponse.json();
+                            if (eventsData.success && eventsData.events) {
+                                this.coverageTracker.syncWithEngagementEvents(eventsData.events);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[Coverage] Could not sync with events:', e);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('[Coverage] Error loading coverage metrics:', error);
+        }
+    }
+    
+    // Update coverage display in UI
+    updateCoverageDisplay() {
+        if (!this.coverageMetrics) return;
+        
+        const coveragePanel = document.getElementById('coverageMetricsPanel');
+        if (!coveragePanel) return;
+        
+        const metrics = this.coverageMetrics;
+        const coveragePercent = parseFloat(metrics.coveragePercent);
+        const coverageColor = coveragePercent >= 50 ? '#ff4444' : coveragePercent >= 30 ? '#ff8800' : '#00aa44';
+        const coverageStatus = coveragePercent >= 50 ? 'High Risk' : coveragePercent >= 30 ? 'Moderate Risk' : 'Low Risk';
+        
+        coveragePanel.innerHTML = `
+            <div style="background: #f9fafb; padding: 20px; border-radius: 8px; margin-top: 20px; border-left: 4px solid ${coverageColor};">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h4 style="color: #333; margin: 0;"><i class="fas fa-chart-pie"></i> Phishing Coverage Analysis</h4>
+                    <span style="background: ${coverageColor}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold;">
+                        ${coverageStatus}
+                    </span>
+                </div>
+                
+                <p style="color: #666; font-size: 13px; margin-bottom: 15px;">
+                    Coverage shows how many employees have interacted with phishing emails. Higher coverage indicates more employees are seeing and engaging with suspicious emails.
+                </p>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                    <div>
+                        <div style="color: #666; font-size: 12px;">Total Emails</div>
+                        <div style="color: #333; font-size: 24px; font-weight: bold;">${metrics.total}</div>
+                    </div>
+                    <div>
+                        <div style="color: #666; font-size: 12px;">Opened</div>
+                        <div style="color: #667eea; font-size: 24px; font-weight: bold;">${metrics.opened}</div>
+                        <div style="color: #666; font-size: 11px;">${metrics.coveragePercent}% coverage</div>
+                    </div>
+                    <div>
+                        <div style="color: #666; font-size: 12px;">Clicked</div>
+                        <div style="color: ${coverageColor}; font-size: 24px; font-weight: bold;">${metrics.clicked}</div>
+                        <div style="color: #666; font-size: 11px;">${metrics.clickRate}% click rate</div>
+                    </div>
+                    <div>
+                        <div style="color: #666; font-size: 12px;">Reported</div>
+                        <div style="color: #00aa44; font-size: 24px; font-weight: bold;">${metrics.reported}</div>
+                        <div style="color: #666; font-size: 11px;">${metrics.reportRate}% report rate</div>
+                    </div>
+                    ${metrics.avgTimeToOpen ? `
+                    <div>
+                        <div style="color: #666; font-size: 12px;">Avg Time to Open</div>
+                        <div style="color: #667eea; font-size: 20px; font-weight: bold;">${metrics.avgTimeToOpen}m</div>
+                    </div>
+                    ` : ''}
+                </div>
+                
+                ${this.formatDepartmentCoverageHeatmap(metrics.departments)}
+            </div>
+        `;
+    }
+    
+    formatDepartmentCoverageHeatmap(departments) {
+        if (!departments || Object.keys(departments).length === 0) return '';
+        
+        let html = '<div style="margin-top: 20px;"><h5 style="color: #333; margin-bottom: 10px;">Coverage by Department:</h5>';
+        
+        Object.entries(departments).forEach(([dept, data]) => {
+            const coveragePercent = parseFloat(data.coveragePercent);
+            const deptColor = coveragePercent >= 50 ? '#ff4444' : coveragePercent >= 30 ? '#ff8800' : '#00aa44';
+            const barWidth = Math.min(100, coveragePercent);
+            
+            html += `
+                <div style="background: white; padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 3px solid ${deptColor};">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <strong style="color: #333;">${dept}</strong>
+                        <span style="color: ${deptColor}; font-weight: bold;">${data.coveragePercent}%</span>
+                    </div>
+                    <div style="background: #e0e0e0; height: 8px; border-radius: 4px; overflow: hidden;">
+                        <div style="background: ${deptColor}; height: 100%; width: ${barWidth}%; transition: width 0.3s;"></div>
+                    </div>
+                    <div style="color: #666; font-size: 11px; margin-top: 5px;">
+                        ${data.opened}/${data.total} opened | ${data.clicked} clicked | ${data.reported} reported
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        return html;
+    }
+    
+    // Check coverage alerts
+    checkCoverageAlerts() {
+        if (!this.coverageMetrics) return;
+        
+        const coveragePercent = parseFloat(this.coverageMetrics.coveragePercent);
+        const threshold = 40; // Alert if coverage is below 40%
+        
+        if (coveragePercent < threshold) {
+            // Show alert in activity log
+            this.addActivityLog(
+                `⚠️ Low phishing coverage: ${coveragePercent}% (threshold: ${threshold}%)`,
+                'warning'
+            );
+        }
     }
 
     setupEventListeners() {

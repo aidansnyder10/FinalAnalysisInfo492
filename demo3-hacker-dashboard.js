@@ -6,6 +6,8 @@ class HackerDashboard {
         this.selectedTargets = [];
         this.generatedEmails = [];
         this.personas = [];
+        this.coverageTracker = new PhishingCoverageTracker();
+        this.coverageMetrics = null;
         
         this.init();
     }
@@ -15,8 +17,162 @@ class HackerDashboard {
         this.loadCampaigns();
         this.setupEventListeners();
         this.setupEvaluationMetricsListener();
+        this.setupCoverageTracking();
         this.updateKPIs();
         this.updateQuickStats();
+    }
+    
+    setupCoverageTracking() {
+        // Poll for coverage metrics updates
+        setInterval(() => {
+            this.loadCoverageMetrics();
+        }, 5000); // Poll every 5 seconds
+        
+        // Load initial coverage metrics
+        this.loadCoverageMetrics();
+    }
+    
+    // Track email delivery for coverage
+    trackEmailDelivery(email) {
+        if (this.coverageTracker) {
+            this.coverageTracker.trackDelivery(email.id, {
+                campaignId: email.campaignId,
+                targetPersona: email.targetPersona
+            });
+        }
+        
+        // Also track via API
+        fetch('/coverage/track', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                emailId: email.id,
+                event: 'delivered',
+                emailData: {
+                    campaignId: email.campaignId,
+                    targetPersona: email.targetPersona
+                }
+            })
+        }).catch(err => console.error('[Coverage] Error tracking delivery:', err));
+    }
+    
+    // Load coverage metrics from API
+    async loadCoverageMetrics() {
+        try {
+            const campaignId = this.currentCampaign ? this.currentCampaign.id.toString() : null;
+            const url = campaignId 
+                ? `/coverage/metrics?campaignId=${campaignId}`
+                : '/coverage/metrics';
+            
+            const response = await fetch(url);
+            if (!response.ok) {
+                console.warn('[Coverage] Failed to load coverage metrics');
+                return;
+            }
+            
+            const data = await response.json();
+            if (data.success && data.metrics) {
+                this.coverageMetrics = data.metrics;
+                this.updateCoverageDisplay();
+                
+                // Also sync with local coverage tracker
+                if (this.coverageTracker) {
+                    // Sync with engagement events from API
+                    try {
+                        const eventsResponse = await fetch('/events');
+                        if (eventsResponse.ok) {
+                            const eventsData = await eventsResponse.json();
+                            if (eventsData.success && eventsData.events) {
+                                this.coverageTracker.syncWithEngagementEvents(eventsData.events);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[Coverage] Could not sync with events:', e);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('[Coverage] Error loading coverage metrics:', error);
+        }
+    }
+    
+    // Update coverage display in UI
+    updateCoverageDisplay() {
+        if (!this.coverageMetrics) return;
+        
+        const coveragePanel = document.getElementById('coverageMetricsPanel');
+        if (!coveragePanel) return;
+        
+        const metrics = this.coverageMetrics;
+        const coveragePercent = parseFloat(metrics.coveragePercent);
+        const coverageColor = coveragePercent >= 50 ? '#00ff88' : coveragePercent >= 30 ? '#ffaa00' : '#ff4444';
+        
+        coveragePanel.innerHTML = `
+            <div style="background: #1a1f35; padding: 20px; border-radius: 8px; margin-top: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h4 style="color: #667eea; margin: 0;"><i class="fas fa-bullseye"></i> Phishing Coverage Metrics</h4>
+                    <span style="background: ${coverageColor}; color: #000; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold;">
+                        ${coveragePercent}% Coverage
+                    </span>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                    <div>
+                        <div style="color: #888; font-size: 12px;">Total Sent</div>
+                        <div style="color: #fff; font-size: 24px; font-weight: bold;">${metrics.total}</div>
+                    </div>
+                    <div>
+                        <div style="color: #888; font-size: 12px;">Opened</div>
+                        <div style="color: #667eea; font-size: 24px; font-weight: bold;">${metrics.opened}</div>
+                        <div style="color: #888; font-size: 11px;">${metrics.coveragePercent}% coverage</div>
+                    </div>
+                    <div>
+                        <div style="color: #888; font-size: 12px;">Clicked</div>
+                        <div style="color: ${coverageColor}; font-size: 24px; font-weight: bold;">${metrics.clicked}</div>
+                        <div style="color: #888; font-size: 11px;">${metrics.clickRate}% click rate</div>
+                    </div>
+                    <div>
+                        <div style="color: #888; font-size: 12px;">Reported</div>
+                        <div style="color: #ff4444; font-size: 24px; font-weight: bold;">${metrics.reported}</div>
+                        <div style="color: #888; font-size: 11px;">${metrics.reportRate}% report rate</div>
+                    </div>
+                    ${metrics.avgTimeToOpen ? `
+                    <div>
+                        <div style="color: #888; font-size: 12px;">Avg Time to Open</div>
+                        <div style="color: #667eea; font-size: 20px; font-weight: bold;">${metrics.avgTimeToOpen}m</div>
+                    </div>
+                    ` : ''}
+                </div>
+                
+                ${this.formatDepartmentCoverage(metrics.departments)}
+            </div>
+        `;
+    }
+    
+    formatDepartmentCoverage(departments) {
+        if (!departments || Object.keys(departments).length === 0) return '';
+        
+        let html = '<div style="margin-top: 20px;"><h5 style="color: #fff; margin-bottom: 10px;">Coverage by Department:</h5>';
+        
+        Object.entries(departments).forEach(([dept, data]) => {
+            const coveragePercent = parseFloat(data.coveragePercent);
+            const deptColor = coveragePercent >= 50 ? '#00ff88' : coveragePercent >= 30 ? '#ffaa00' : '#ff4444';
+            
+            html += `
+                <div style="background: #0f1529; padding: 10px; border-radius: 6px; margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="color: #ffaa00;">${dept}:</strong>
+                        <span style="color: ${deptColor}; font-weight: bold;">${data.coveragePercent}%</span>
+                    </div>
+                    <div style="color: #888; font-size: 12px; margin-top: 5px;">
+                        ${data.opened}/${data.total} opened | ${data.clicked} clicked | ${data.reported} reported
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        return html;
     }
     
     setupEvaluationMetricsListener() {
@@ -939,6 +1095,9 @@ Return ONLY the JSON object, nothing else.`;
                 target: persona.name,
                 model: model
             });
+            
+            // Track email delivery for coverage metrics
+            this.trackEmailDelivery(email);
             
             return email;
 
