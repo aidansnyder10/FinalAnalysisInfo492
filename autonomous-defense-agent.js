@@ -119,7 +119,7 @@ class AutonomousDefenseAgent {
         const urls = email.urls || this.extractUrls(content) || [];
         
         // Realistic base score: Most emails are legitimate (industry standard)
-        let riskScore = 25; // Base score (balanced to allow some sophisticated attacks)
+        let riskScore = 20; // Base score (lower starting point for legitimate emails)
         let riskLevel = 'low';
         
         // URL analysis (balanced penalties)
@@ -192,7 +192,8 @@ class AutonomousDefenseAgent {
         ];
         if (senderDomain && !knownLegitimateDomains.includes(senderDomain)) {
             // External domain requesting action - realistic phishing indicator
-            riskScore += 10; // External domains are somewhat suspicious (reduced to allow legitimate external emails)
+            // Industry standard: External domains requesting actions are moderately suspicious
+            riskScore += 15; // External domains are moderately suspicious (realistic industry behavior)
         }
         
         // Normalize risk score
@@ -203,10 +204,11 @@ class AutonomousDefenseAgent {
         // Medium risk = suspicious (reported for review)
         // Low risk = appears safe (bypassed)
         // Balanced to achieve 50-70% detection rate for sophisticated attacks
+        // Industry reality: External domains + any suspicious indicators = usually flagged
         if (riskScore >= 75) {
             riskLevel = 'high'; // Blocked - obvious phishing
-        } else if (riskScore >= 50) {
-            riskLevel = 'medium'; // Reported - suspicious, needs review (raised threshold to allow more bypasses)
+        } else if (riskScore >= 40) {
+            riskLevel = 'medium'; // Reported - suspicious, needs review (realistic threshold)
         } else {
             riskLevel = 'low'; // Bypassed - appears legitimate
         }
