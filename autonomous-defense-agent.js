@@ -119,18 +119,21 @@ class AutonomousDefenseAgent {
         const urls = email.urls || this.extractUrls(content) || [];
         
         // Realistic base score: Most emails are legitimate (industry standard)
-        let riskScore = 25; // Base score (lower = more realistic, assumes most emails are safe)
+        let riskScore = 30; // Base score (slightly higher to catch sophisticated attacks)
         let riskLevel = 'low';
         
-        // URL analysis (less aggressive penalties)
+        // URL analysis (balanced penalties)
         if (urls.length > 0) {
             const urlAuthenticity = this.analyzeUrlAuthenticity(urls, senderEmail);
             if (urlAuthenticity < 30) {
-                riskScore += 40; // Obvious URL issues (shorteners, IPs, mismatches)
+                riskScore += 45; // Obvious URL issues (shorteners, IPs, mismatches)
             } else if (urlAuthenticity < 60) {
-                riskScore += 25; // Moderate URL concerns
+                riskScore += 30; // Moderate URL concerns
             } else if (urlAuthenticity < 80) {
-                riskScore += 10; // Minor URL concerns
+                riskScore += 15; // Minor URL concerns
+            } else if (urlAuthenticity < 100) {
+                // Even if URLs match, external domains from unknown senders are slightly suspicious
+                riskScore += 5; // Very minor concern for external domains
             }
         }
         
@@ -174,9 +177,22 @@ class AutonomousDefenseAgent {
             riskScore += 5; // Low risk (single urgency word)
         }
         
-        // Sender analysis (minor indicator)
+        // Sender analysis
         if (senderEmail.includes('noreply') || senderEmail.includes('no-reply')) {
             riskScore += 3; // Minor risk indicator
+        }
+        
+        // External/unknown sender domains are suspicious (realistic)
+        // Legitimate business emails usually come from known/trusted domains
+        // External domains requesting actions are a common phishing indicator
+        const senderDomain = senderEmail.split('@')[1]?.toLowerCase();
+        const knownLegitimateDomains = [
+            'securebank.com', 'firstnational.com', 'metrocu.org', 
+            'pacifictrust.com', 'communityfirst.com'
+        ];
+        if (senderDomain && !knownLegitimateDomains.includes(senderDomain)) {
+            // External domain requesting action - realistic phishing indicator
+            riskScore += 15; // External domains are moderately suspicious
         }
         
         // Normalize risk score
@@ -186,9 +202,10 @@ class AutonomousDefenseAgent {
         // High risk = obvious phishing (blocked)
         // Medium risk = suspicious (reported for review)
         // Low risk = appears safe (bypassed)
-        if (riskScore >= 80) {
+        // Balanced to achieve 50-70% detection rate for sophisticated attacks
+        if (riskScore >= 75) {
             riskLevel = 'high'; // Blocked - obvious phishing
-        } else if (riskScore >= 55) {
+        } else if (riskScore >= 45) {
             riskLevel = 'medium'; // Reported - suspicious, needs review
         } else {
             riskLevel = 'low'; // Bypassed - appears legitimate
