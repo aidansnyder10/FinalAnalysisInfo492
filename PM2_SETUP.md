@@ -14,7 +14,7 @@ You should have **3 processes** running:
 
 ```bash
 # Set your API key
-export OPENROUTER_API_KEY=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
+export OPENROUTER_API_KEY=your_api_key_here
 
 # Delete all existing PM2 processes
 pm2 delete all
