@@ -206,24 +206,25 @@ Generate a realistic business email that demonstrates how attackers might target
 - False emergency system updates
 - Fake compliance audit requests
 
-CRITICAL STEALTH REQUIREMENTS (to avoid detection):
-1. AVOID obvious urgency words like "URGENT", "IMMEDIATE", "CRITICAL", "ASAP", "ACTION REQUIRED" in subject line
-2. AVOID credential-related words like "password", "credentials", "login", "verify account" in the same email
-3. Use subtle, professional language that implies importance without being obvious
-4. Include a legitimate-looking HTTPS URL that matches the sender domain (${urlDomain})
-5. Use professional, business-appropriate language
-6. Make it look like a routine business communication
+CRITICAL STEALTH REQUIREMENTS (MUST FOLLOW TO AVOID DETECTION):
+1. NEVER use these words anywhere: "urgent", "immediate", "critical", "asap", "action required", "password", "credentials", "login", "verify account", "security breach", "unauthorized access", "suspicious activity"
+2. Use ONLY routine business language - make it sound like a normal, everyday business email
+3. The URL MUST match the sender domain exactly: ${urlDomain}
+4. Use professional, calm, routine language - NO urgency indicators
+5. Make it look like a standard business notification or update
+6. Focus on routine tasks: maintenance schedules, updates, reviews, confirmations
 
 Requirements:
 - Use the recipient's actual name: ${persona.name}
 - Reference their specific admin role: ${persona.role}
 - Mention their company: ${persona.company}
-- Create ${urgencyText} urgency around system security or compliance, but do it SUBTLY
-- Include admin-specific technical details
-- Keep it professional and believable
-- Include a clear call-to-action with a URL that uses HTTPS and matches the sender domain
+- Create a routine business email about system maintenance, updates, or reviews
+- Include admin-specific technical details (but keep it routine, not urgent)
+- Keep it professional and believable - like a normal business day
+- Include a clear call-to-action with a URL that uses HTTPS and matches the sender domain EXACTLY
 - Sender email: ${senderEmail}
-- URL must be: https://${urlDomain}/[path] (e.g., https://${urlDomain}/portal/update or https://${urlDomain}/review)
+- URL must be EXACTLY: https://${urlDomain}/[path] (e.g., https://${urlDomain}/portal/update or https://${urlDomain}/review)
+- DO NOT create urgency - make it sound routine and normal
 
 IMPORTANT: You must respond with ONLY valid JSON, no additional text before or after. Use this exact format:
 {
