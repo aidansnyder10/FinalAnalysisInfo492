@@ -930,94 +930,56 @@ app.get('/api/agent/status', (req, res) => {
         }
         
         // Load recent emails and calculate REAL-TIME defense interaction metrics
-        // Only count emails deployed AFTER the server/agent restart (based on startTime)
         let realTimeBypassed = 0;
         let realTimeDetected = 0;
         let realTimeClicked = 0;
-        let cutoffTime = null;
-        
-        // Get the cutoff time (when agent started/reset) from agentStatus
-        // Use startTime from metrics file - this is set when metrics are reset
-        // This is the most reliable indicator of when to start counting
-        if (agentStatus.startTime) {
-            cutoffTime = new Date(agentStatus.startTime).getTime();
-            console.log(`[Agent Status] Using startTime as cutoff: ${new Date(cutoffTime).toISOString()} (from metrics file)`);
-        } else {
-            console.log(`[Agent Status] No startTime found, counting all emails`);
-        }
-        
         try {
             if (fs.existsSync(inboxFile)) {
                 const data = fs.readFileSync(inboxFile, 'utf8');
                 const emails = JSON.parse(data);
-                console.log(`[Agent Status] Total emails in inbox: ${emails.length}`);
                 
-                // Filter emails to only include those deployed AFTER the metrics reset
-                // Use startTime from metrics file as the cutoff point
-                let filteredEmails = emails;
-                if (cutoffTime) {
-                    filteredEmails = emails.filter(e => {
-                        const emailTime = e.receivedAt || e.timestamp;
-                        if (!emailTime) {
-                            // If no timestamp, exclude it (shouldn't happen but be safe)
-                            return false;
-                        }
-                        const emailTimeMs = new Date(emailTime).getTime();
-                        // Only include emails that were received AFTER the startTime
-                        return emailTimeMs >= cutoffTime;
-                    });
-                    console.log(`[Agent Status] Filtered emails (after ${new Date(cutoffTime).toISOString()}): ${filteredEmails.length} out of ${emails.length} total`);
-                    if (filteredEmails.length < emails.length) {
-                        const excluded = emails.length - filteredEmails.length;
-                        console.log(`[Agent Status] Excluded ${excluded} emails that were received before the cutoff time`);
-                    }
-                } else {
-                    console.log(`[Agent Status] No cutoff time, using all ${emails.length} emails`);
-                }
-                
-                // Get last 10 emails (from all emails, not just filtered)
+                // Get last 10 emails, most recent first
                 recentEmails = emails.slice(-10).reverse();
                 
-                // Calculate REAL-TIME defense interaction metrics from filtered emails only
-                const bypassedEmails = filteredEmails.filter(e => 
+                // Calculate REAL-TIME defense interaction metrics from inbox
+                const bypassedEmails = emails.filter(e => 
                     e.status === 'delivered' || 
                     e.status === undefined || 
                     e.status === null ||
                     (e.status !== 'blocked' && e.status !== 'reported')
                 );
                 realTimeBypassed = bypassedEmails.length;
-                realTimeDetected = filteredEmails.filter(e => e.status === 'blocked' || e.status === 'reported').length;
-                
-                console.log(`[Agent Status] Post-restart stats: ${realTimeBypassed} bypassed, ${realTimeDetected} detected, ${filteredEmails.length} total`);
+                realTimeDetected = emails.filter(e => e.status === 'blocked' || e.status === 'reported').length;
                 
                 // Count clicked emails - check both persisted email.clicked property AND events array
                 // email.clicked is persisted to bank-inbox.json, so it survives server restarts
                 // events array is in-memory only, so check both to get complete picture
-                // Only count clicks for emails in the filtered set (post-restart)
                 const bypassedEmailIds = new Set(bypassedEmails.map(e => e.id));
-                const filteredEmailIds = new Set(filteredEmails.map(e => e.id));
                 
-                // Count clicked emails from filtered emails only (post-restart)
+                // First, count emails with clicked property (persisted)
+                const clickedFromEmails = emails.filter(e => 
+                    bypassedEmailIds.has(e.id) && e.clicked === true
+                ).length;
+                
+                // Then, count clicked events from events array (in-memory, for clicks that happened after restart)
+                const clickedEvents = events.filter(e => 
+                    e.event === 'clicked' && 
+                    !e.phantom && 
+                    bypassedEmailIds.has(e.emailId)
+                );
+                
+                // Combine both (use Set to avoid double-counting if an email has both)
                 const clickedEmailIds = new Set();
-                
-                // Check persisted clicked property on filtered emails
-                filteredEmails.forEach(e => {
+                emails.forEach(e => {
                     if (bypassedEmailIds.has(e.id) && e.clicked === true) {
                         clickedEmailIds.add(e.id);
                     }
                 });
-                
-                // Check clicked events from events array (only for filtered emails)
-                const clickedEvents = events.filter(e => 
-                    e.event === 'clicked' && 
-                    !e.phantom && 
-                    bypassedEmailIds.has(e.emailId) &&
-                    filteredEmailIds.has(e.emailId)
-                );
                 clickedEvents.forEach(e => {
-                    clickedEmailIds.add(e.emailId);
+                    if (bypassedEmailIds.has(e.emailId)) {
+                        clickedEmailIds.add(e.emailId);
+                    }
                 });
-                
                 realTimeClicked = clickedEmailIds.size;
             }
         } catch (error) {
@@ -1028,6 +990,10 @@ app.get('/api/agent/status', (req, res) => {
         const totalEmails = realTimeBypassed + realTimeDetected;
         const realTimeBypassRate = totalEmails > 0 ? ((realTimeBypassed / totalEmails) * 100) : 0;
         const realTimeClickRate = realTimeBypassed > 0 ? ((realTimeClicked / realTimeBypassed) * 100) : 0;
+        
+        // Debug logging
+        console.log(`[Agent Status] Real-time metrics: bypassed=${realTimeBypassed}, detected=${realTimeDetected}, clicked=${realTimeClicked}, total=${totalEmails}`);
+        console.log(`[Agent Status] Rates: bypass=${realTimeBypassRate.toFixed(1)}%, click=${realTimeClickRate.toFixed(1)}%`);
         
         // Override agent status with REAL-TIME defense interaction metrics
         agentStatus.emailsBypassed = realTimeBypassed;
@@ -1511,7 +1477,14 @@ app.get('/api/agent/metrics', (req, res) => {
         );
         emailsClicked = clickedEvents.length;
 
-        // Calculate click rate based on bypassed emails only (not total)
+        // Calculate rates from inbox data (always calculate, don't rely on evaluation-metrics.json)
+        const totalEmails = metrics.totalEmails || 0;
+        const bypassRate = totalEmails > 0 
+            ? ((metrics.bypassed / totalEmails) * 100).toFixed(2) 
+            : 0;
+        const detectionRate = totalEmails > 0 
+            ? ((metrics.detected / totalEmails) * 100).toFixed(2) 
+            : 0;
         const clickRate = metrics.bypassed > 0 
             ? ((emailsClicked / metrics.bypassed) * 100).toFixed(2) 
             : 0;
@@ -1519,8 +1492,12 @@ app.get('/api/agent/metrics', (req, res) => {
         res.json({
             success: true,
             metrics: {
-                ...metrics,
+                totalEmails: metrics.totalEmails,
+                detected: metrics.detected,
+                bypassed: metrics.bypassed,
                 emailsClicked,
+                detectionRate: parseFloat(detectionRate),
+                bypassRate: parseFloat(bypassRate),
                 clickRate: parseFloat(clickRate)
             }
         });

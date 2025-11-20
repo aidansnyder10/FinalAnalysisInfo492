@@ -568,20 +568,26 @@ Return ONLY the JSON object, nothing else.`;
             if (response.ok) {
                 const data = await response.json();
                 if (data.success && data.metrics) {
-                    // Update agent stats with attack success metrics
-                    this.stats.emailsBypassed = data.metrics.bypassed || 0;
-                    this.stats.emailsDetected = data.metrics.detected || 0;
-                    this.stats.emailsClicked = data.metrics.emailsClicked || 0;
+                    // Update agent stats with attack success metrics (always update, don't use || 0 to preserve 0 values)
+                    this.stats.emailsBypassed = data.metrics.bypassed !== undefined ? data.metrics.bypassed : this.stats.emailsBypassed || 0;
+                    this.stats.emailsDetected = data.metrics.detected !== undefined ? data.metrics.detected : this.stats.emailsDetected || 0;
+                    this.stats.emailsClicked = data.metrics.emailsClicked !== undefined ? data.metrics.emailsClicked : this.stats.emailsClicked || 0;
                     
-                    // Calculate rates
+                    // Calculate rates - always update, use values from metrics if available
                     const totalEmails = data.metrics.totalEmails || 0;
-                    if (totalEmails > 0) {
+                    if (data.metrics.bypassRate !== undefined) {
+                        // Use rates directly from metrics endpoint (already calculated)
+                        this.stats.bypassRate = parseFloat(data.metrics.bypassRate || 0);
+                        this.stats.clickRate = parseFloat(data.metrics.clickRate || 0);
+                    } else if (totalEmails > 0) {
+                        // Calculate rates if not provided
                         this.stats.bypassRate = parseFloat(((data.metrics.bypassed / totalEmails) * 100).toFixed(2));
                         this.stats.clickRate = parseFloat(data.metrics.clickRate || 0);
                     }
                     
-                    // Save updated metrics
+                    // Save updated metrics immediately
                     this.saveMetrics();
+                    this.log(`Updated defense interaction metrics: ${this.stats.emailsBypassed} bypassed, ${this.stats.emailsDetected} detected, ${this.stats.emailsClicked} clicked (bypass: ${this.stats.bypassRate}%, click: ${this.stats.clickRate}%)`);
                 }
                 return data;
             }
