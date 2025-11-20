@@ -929,17 +929,50 @@ app.get('/api/agent/status', (req, res) => {
             console.error('Error reading training stats:', error);
         }
         
-        // Load recent emails
+        // Load recent emails and calculate REAL-TIME defense interaction metrics
+        let realTimeBypassed = 0;
+        let realTimeDetected = 0;
+        let realTimeClicked = 0;
         try {
             if (fs.existsSync(inboxFile)) {
                 const data = fs.readFileSync(inboxFile, 'utf8');
                 const emails = JSON.parse(data);
+                
                 // Get last 10 emails, most recent first
                 recentEmails = emails.slice(-10).reverse();
+                
+                // Calculate REAL-TIME defense interaction metrics from inbox
+                const bypassedEmails = emails.filter(e => 
+                    e.status === 'delivered' || 
+                    e.status === undefined || 
+                    e.status === null ||
+                    (e.status !== 'blocked' && e.status !== 'reported')
+                );
+                realTimeBypassed = bypassedEmails.length;
+                realTimeDetected = emails.filter(e => e.status === 'blocked' || e.status === 'reported').length;
+                
+                // Count clicked emails (from events or clicked property)
+                const bypassedEmailIds = new Set(bypassedEmails.map(e => e.id));
+                realTimeClicked = emails.filter(e => 
+                    bypassedEmailIds.has(e.id) && 
+                    (e.clicked === true || (e.events && e.events.some(ev => ev.event === 'clicked' && !ev.phantom)))
+                ).length;
             }
         } catch (error) {
             console.error('Error reading inbox file:', error);
         }
+        
+        // Calculate real-time rates
+        const totalEmails = realTimeBypassed + realTimeDetected;
+        const realTimeBypassRate = totalEmails > 0 ? ((realTimeBypassed / totalEmails) * 100) : 0;
+        const realTimeClickRate = realTimeBypassed > 0 ? ((realTimeClicked / realTimeBypassed) * 100) : 0;
+        
+        // Override agent status with REAL-TIME defense interaction metrics
+        agentStatus.emailsBypassed = realTimeBypassed;
+        agentStatus.emailsDetected = realTimeDetected;
+        agentStatus.emailsClicked = realTimeClicked;
+        agentStatus.bypassRate = realTimeBypassRate;
+        agentStatus.clickRate = realTimeClickRate;
         
         res.json({
             success: true,
