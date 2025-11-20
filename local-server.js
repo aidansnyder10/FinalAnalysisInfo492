@@ -937,23 +937,35 @@ app.get('/api/agent/status', (req, res) => {
         let cutoffTime = null;
         
         // Get the cutoff time (when agent started/reset) from agentStatus
+        // Use startTime from metrics file - this is set when metrics are reset or agent starts
         if (agentStatus.startTime) {
             cutoffTime = new Date(agentStatus.startTime).getTime();
+            console.log(`[Agent Status] Using cutoff time: ${new Date(cutoffTime).toISOString()} (from startTime: ${agentStatus.startTime})`);
+        } else {
+            console.log(`[Agent Status] No startTime found, counting all emails`);
         }
         
         try {
             if (fs.existsSync(inboxFile)) {
                 const data = fs.readFileSync(inboxFile, 'utf8');
                 const emails = JSON.parse(data);
+                console.log(`[Agent Status] Total emails in inbox: ${emails.length}`);
                 
                 // Filter emails to only include those deployed AFTER the restart
                 let filteredEmails = emails;
                 if (cutoffTime) {
                     filteredEmails = emails.filter(e => {
                         const emailTime = e.receivedAt || e.timestamp;
-                        if (!emailTime) return false;
-                        return new Date(emailTime).getTime() >= cutoffTime;
+                        if (!emailTime) {
+                            // If no timestamp, exclude it (shouldn't happen but be safe)
+                            return false;
+                        }
+                        const emailTimeMs = new Date(emailTime).getTime();
+                        return emailTimeMs >= cutoffTime;
                     });
+                    console.log(`[Agent Status] Filtered emails (after ${new Date(cutoffTime).toISOString()}): ${filteredEmails.length}`);
+                } else {
+                    console.log(`[Agent Status] No cutoff time, using all ${emails.length} emails`);
                 }
                 
                 // Get last 10 emails (from all emails, not just filtered)
@@ -968,6 +980,8 @@ app.get('/api/agent/status', (req, res) => {
                 );
                 realTimeBypassed = bypassedEmails.length;
                 realTimeDetected = filteredEmails.filter(e => e.status === 'blocked' || e.status === 'reported').length;
+                
+                console.log(`[Agent Status] Post-restart stats: ${realTimeBypassed} bypassed, ${realTimeDetected} detected, ${filteredEmails.length} total`);
                 
                 // Count clicked emails - check both persisted email.clicked property AND events array
                 // email.clicked is persisted to bank-inbox.json, so it survives server restarts
