@@ -186,6 +186,10 @@ class AutonomousAgent {
             'expert': 'Create an expertly crafted, highly personalized email with advanced social engineering techniques'
         }[strategy.attackLevel] || 'Create a professional email';
 
+        // Generate a legitimate-looking sender email that matches the URL domain
+        const senderEmail = this.generateSenderEmail(strategy);
+        const urlDomain = senderEmail.split('@')[1];
+
         const prompt = `${attackLevelText} for educational cybersecurity training.
 
 Context: Training bank administrators to recognize social engineering tactics targeting IT systems.
@@ -202,20 +206,31 @@ Generate a realistic business email that demonstrates how attackers might target
 - False emergency system updates
 - Fake compliance audit requests
 
+CRITICAL STEALTH REQUIREMENTS (to avoid detection):
+1. AVOID obvious urgency words like "URGENT", "IMMEDIATE", "CRITICAL", "ASAP", "ACTION REQUIRED" in subject line
+2. AVOID credential-related words like "password", "credentials", "login", "verify account" in the same email
+3. Use subtle, professional language that implies importance without being obvious
+4. Include a legitimate-looking HTTPS URL that matches the sender domain (${urlDomain})
+5. Use professional, business-appropriate language
+6. Make it look like a routine business communication
+
 Requirements:
 - Use the recipient's actual name: ${persona.name}
 - Reference their specific admin role: ${persona.role}
 - Mention their company: ${persona.company}
-- Create ${urgencyText} urgency around system security or compliance
+- Create ${urgencyText} urgency around system security or compliance, but do it SUBTLY
 - Include admin-specific technical details
 - Keep it professional and believable
-- Include a clear call-to-action (clicking links, providing credentials, approving invoices)
+- Include a clear call-to-action with a URL that uses HTTPS and matches the sender domain
+- Sender email: ${senderEmail}
+- URL must be: https://${urlDomain}/[path] (e.g., https://${urlDomain}/portal/update or https://${urlDomain}/review)
 
 IMPORTANT: You must respond with ONLY valid JSON, no additional text before or after. Use this exact format:
 {
-    "subject": "Urgent: System Maintenance Required - ${persona.company}",
-    "content": "Dear ${persona.name},\\n\\nAs ${persona.role} at ${persona.company}, we need immediate access to your admin systems for critical maintenance. Please review the attached documentation and provide your administrative credentials.\\n\\nBest regards,\\nIT Operations Team",
-    "sender": "IT Operations Team"
+    "subject": "System Maintenance Notification - ${persona.company}",
+    "content": "Dear ${persona.name},\\n\\nWe are conducting scheduled maintenance on your admin systems. Please review the details at https://${urlDomain}/portal/maintenance and confirm your availability.\\n\\nBest regards,\\nIT Operations Team",
+    "sender": "IT Operations Team",
+    "url": "https://${urlDomain}/portal/maintenance"
 }
 
 Return ONLY the JSON object, nothing else.`;
@@ -267,15 +282,49 @@ Return ONLY the JSON object, nothing else.`;
                 throw new Error('Invalid email data structure');
             }
 
+            // Use the sender email we generated earlier and ensure URL matches domain
+            const senderDomain = senderEmail.split('@')[1];
+            
+            // Extract or generate URL that matches sender domain
+            let emailUrl = emailData.url;
+            if (!emailUrl || !emailUrl.includes(senderDomain)) {
+                // Generate a legitimate-looking URL that matches the sender domain
+                const urlPaths = [
+                    '/portal/update',
+                    '/review/request',
+                    '/dashboard/notifications',
+                    '/system/status',
+                    '/admin/portal',
+                    '/services/update',
+                    '/account/verify',
+                    '/maintenance/schedule'
+                ];
+                const randomPath = urlPaths[Math.floor(Math.random() * urlPaths.length)];
+                emailUrl = `https://${senderDomain}${randomPath}`;
+            }
+            
+            // Ensure URL is HTTPS and matches domain
+            if (!emailUrl.startsWith('https://')) {
+                emailUrl = emailUrl.replace(/^https?:\/\//, 'https://');
+            }
+            
+            // Add URL to content if not already present
+            let finalContent = emailData.content;
+            if (!finalContent.includes(emailUrl) && !finalContent.includes('http')) {
+                // Add URL in a natural way
+                finalContent += `\n\nPlease review: ${emailUrl}`;
+            }
+
             // Calculate risk score (simplified version)
             const riskScore = this.calculateRiskScore(emailData, strategy);
 
             return {
                 id: `email-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 subject: emailData.subject,
-                content: emailData.content,
+                content: finalContent,
                 sender: emailData.sender || 'IT Operations Team',
-                senderEmail: this.generateSenderEmail(strategy),
+                senderEmail: senderEmail,
+                urls: [emailUrl], // Store URL for defense agent analysis
                 targetPersona: persona,
                 model: strategy.model,
                 attackLevel: strategy.attackLevel,
@@ -317,15 +366,33 @@ Return ONLY the JSON object, nothing else.`;
     }
 
     generateSenderEmail(strategy) {
+        // More legitimate-looking domains that don't trigger "noreply" detection
         const domains = [
-            'it-ops-support.com',
-            'system-maintenance.net',
-            'security-alerts.org',
-            'vendor-services.com',
-            'tech-support-solutions.net'
+            'microsoft-partner-services.com',
+            'adobe-licensing.com',
+            'vmware-support.com',
+            'oracle-enterprise.com',
+            'cisco-partner.net',
+            'redhat-support.com',
+            'ibm-enterprise.com',
+            'salesforce-partner.com',
+            'aws-support-partner.com',
+            'google-workspace-partner.com'
         ];
         const randomDomain = domains[Math.floor(Math.random() * domains.length)];
-        return `support@${randomDomain}`;
+        
+        // Use professional sender names, avoid "noreply" or "no-reply"
+        const senderNames = [
+            'support',
+            'notifications',
+            'administrator',
+            'service',
+            'team',
+            'operations',
+            'systems'
+        ];
+        const randomSender = senderNames[Math.floor(Math.random() * senderNames.length)];
+        return `${randomSender}@${randomDomain}`;
     }
 
     async executeAttackCycle() {
@@ -373,7 +440,12 @@ Return ONLY the JSON object, nothing else.`;
             }
         }
 
-        // Get industry metrics for learning (before updating stats)
+        // Wait a bit for defense agent to analyze emails (defense runs every 30 seconds)
+        // Wait 35 seconds to ensure defense has had time to process
+        this.log(`Waiting 35 seconds for defense agent to analyze emails before learning...`);
+        await this.sleep(35000);
+        
+        // Get industry metrics for learning (after defense has analyzed)
         let industryMetrics = null;
         try {
             const metricsResult = await this.getIndustryMetrics();

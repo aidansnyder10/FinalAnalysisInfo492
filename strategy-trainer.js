@@ -8,9 +8,10 @@ const LEARNED_STRATEGIES_FILE = './learned-strategies.json';
 const LEARNED_STRATEGIES_BACKUP = './learned-strategies.json.backup';
 
 class StrategyTrainer {
-    constructor(allStrategies, allPersonas) {
+    constructor(allStrategies, allPersonas, inboxFile = './bank-inbox.json') {
         this.allStrategies = allStrategies || [];
         this.allPersonas = allPersonas || [];
+        this.inboxFile = inboxFile;
         
         // Strategy performance tracking
         // Key: "model|attackLevel|urgencyLevel", Value: { attempts, successes, bypassRate, clickRate, score }
@@ -168,9 +169,57 @@ class StrategyTrainer {
     }
 
     /**
+     * Get actual status of emails from inbox file
+     * @param {Array} emailIds - Array of email IDs to check
+     * @returns {Object} Map of emailId -> { bypassed: boolean, clicked: boolean }
+     */
+    getEmailStatuses(emailIds) {
+        const statuses = {};
+        
+        try {
+            if (fs.existsSync(this.inboxFile)) {
+                const data = fs.readFileSync(this.inboxFile, 'utf8');
+                const emails = JSON.parse(data);
+                
+                // Create a map of email IDs to their status
+                const emailMap = {};
+                emails.forEach(email => {
+                    emailMap[email.id] = email;
+                });
+                
+                // Check each email ID
+                emailIds.forEach(emailId => {
+                    const email = emailMap[emailId];
+                    if (email) {
+                        // Email bypassed if status is 'delivered' or undefined/null
+                        const bypassed = email.status === 'delivered' || 
+                                       email.status === undefined || 
+                                       email.status === null ||
+                                       (email.status !== 'blocked' && email.status !== 'reported');
+                        
+                        // Check if email was clicked (look for clicked events)
+                        // We'll check this from the events array if available, or use a simple heuristic
+                        const clicked = email.clicked === true || 
+                                      (email.events && email.events.some(e => e.event === 'clicked' && !e.phantom));
+                        
+                        statuses[emailId] = { bypassed, clicked };
+                    } else {
+                        // Email not found yet, assume it hasn't been processed
+                        statuses[emailId] = { bypassed: false, clicked: false };
+                    }
+                });
+            }
+        } catch (error) {
+            this.log(`Failed to read inbox file for learning: ${error.message}`, 'WARN');
+        }
+        
+        return statuses;
+    }
+
+    /**
      * Learn from a completed attack cycle
      * @param {Object} cycleResult - Results from executeAttackCycle
-     * @param {Array} emailsGenerated - Array of generated email objects
+     * @param {Array} emailsGenerated - Array of generated email objects with IDs
      * @param {Object} industryMetrics - Metrics from industry system (bypass/detected/clicked)
      */
     learnFromCycle(cycleResult, emailsGenerated, industryMetrics) {
@@ -178,15 +227,11 @@ class StrategyTrainer {
             return;
         }
 
-        // Get metrics per email (we'll estimate based on overall metrics)
-        const totalEmails = industryMetrics?.totalEmails || emailsGenerated.length;
-        const bypassed = industryMetrics?.bypassed || 0;
-        const clicked = industryMetrics?.emailsClicked || 0;
-        
-        const overallBypassRate = totalEmails > 0 ? (bypassed / totalEmails) * 100 : 0;
-        const overallClickRate = totalEmails > 0 ? (clicked / totalEmails) * 100 : 0;
+        // Get actual status of each email from the inbox file
+        const emailIds = emailsGenerated.map(e => e.id);
+        const emailStatuses = this.getEmailStatuses(emailIds);
 
-        // Learn from each email result
+        // Learn from each email result using ACTUAL status
         emailsGenerated.forEach(email => {
             const strategy = {
                 model: email.model,
@@ -197,10 +242,10 @@ class StrategyTrainer {
             const personaId = email.targetPersona?.id;
             const combinationKey = personaId ? this.getCombinationKey(strategy, personaId) : null;
 
-            // Estimate individual email result (for now, use overall metrics)
-            // In a real system, you'd track individual email IDs
-            const emailBypassed = Math.random() < (overallBypassRate / 100); // Simulate individual result
-            const emailClicked = emailBypassed && Math.random() < (overallClickRate / 100);
+            // Get ACTUAL email result from inbox file
+            const emailStatus = emailStatuses[email.id] || { bypassed: false, clicked: false };
+            const emailBypassed = emailStatus.bypassed;
+            const emailClicked = emailStatus.clicked;
 
             // Update strategy scores
             if (!this.strategyScores[strategyKey]) {
@@ -335,7 +380,13 @@ class StrategyTrainer {
         // Save learned patterns
         this.saveLearnedPatterns();
         
-        this.log(`Learned from cycle: ${emailsGenerated.length} emails, overall bypass: ${overallBypassRate.toFixed(2)}%, click: ${overallClickRate.toFixed(2)}%`);
+        // Calculate summary stats for logging
+        const bypassedCount = Object.values(emailStatuses).filter(s => s.bypassed).length;
+        const clickedCount = Object.values(emailStatuses).filter(s => s.clicked).length;
+        const overallBypassRate = emailsGenerated.length > 0 ? (bypassedCount / emailsGenerated.length) * 100 : 0;
+        const overallClickRate = bypassedCount > 0 ? (clickedCount / bypassedCount) * 100 : 0;
+        
+        this.log(`Learned from cycle: ${emailsGenerated.length} emails, ${bypassedCount} bypassed (${overallBypassRate.toFixed(2)}%), ${clickedCount} clicked (${overallClickRate.toFixed(2)}% of bypassed)`);
     }
 
     /**
