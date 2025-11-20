@@ -181,6 +181,51 @@
             return date.toLocaleString();
         }
         
+        function formatStrategy(strategyKey) {
+            // Parse strategy key: "model|attackLevel|urgencyLevel"
+            const parts = strategyKey.split('|');
+            if (parts.length !== 3) {
+                return {
+                    model: strategyKey,
+                    attackLevel: 'Unknown',
+                    urgencyLevel: 'Unknown',
+                    full: strategyKey
+                };
+            }
+            
+            const [model, attackLevel, urgencyLevel] = parts;
+            
+            // Extract short model name (last part of path or simplified)
+            let modelShort = model;
+            if (model.includes('/')) {
+                const modelParts = model.split('/');
+                modelShort = modelParts[modelParts.length - 1];
+            }
+            // Clean up model name: remove "-instruct", replace hyphens/underscores with spaces
+            modelShort = modelShort
+                .replace(/-instruct$/i, '')
+                .replace(/-8b-instruct$/i, '')
+                .replace(/-7b-instruct$/i, '')
+                .replace(/[-_]/g, ' ')
+                .trim();
+            
+            // Capitalize first letter of each word
+            modelShort = modelShort.split(' ').map(word => 
+                word.charAt(0).toUpperCase() + word.slice(1)
+            ).join(' ');
+            
+            // Capitalize attack level and urgency
+            const attackLevelFormatted = attackLevel.charAt(0).toUpperCase() + attackLevel.slice(1);
+            const urgencyLevelFormatted = urgencyLevel.charAt(0).toUpperCase() + urgencyLevel.slice(1);
+            
+            return {
+                model: modelShort,
+                attackLevel: attackLevelFormatted,
+                urgencyLevel: urgencyLevelFormatted,
+                full: strategyKey
+            };
+        }
+        
         async function loadStatus() {
             try {
                 const response = await fetch('/api/agent/status');
@@ -331,10 +376,15 @@
                         ${training.topStrategies && training.topStrategies.length > 0 ? `
                         <div style="background: #0f1529; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
                             <div style="color: #888; font-size: 12px; margin-bottom: 10px; font-weight: bold;">🏆 Top Performing Strategies</div>
-                            ${training.topStrategies.slice(0, 3).map((s, i) => `
+                            ${training.topStrategies.slice(0, 3).map((s, i) => {
+                                const strategyFormatted = formatStrategy(s.strategy);
+                                return `
                                 <div style="padding: 10px; margin-bottom: 8px; background: #0a0e27; border-radius: 6px; border-left: 3px solid ${i === 0 ? '#00ff88' : i === 1 ? '#ffaa00' : '#667eea'};">
                                     <div style="color: #e0e0e0; font-size: 13px; margin-bottom: 5px;">
-                                        <strong>${i + 1}. ${s.strategy}</strong>
+                                        <strong>${i + 1}. ${strategyFormatted.attackLevel} Attack (${strategyFormatted.urgencyLevel} Urgency)</strong>
+                                    </div>
+                                    <div style="color: #888; font-size: 11px; margin-bottom: 8px; font-style: italic;">
+                                        Model: ${strategyFormatted.model}
                                     </div>
                                     <div style="display: flex; gap: 15px; font-size: 11px; color: #888;">
                                         <span>Score: <strong style="color: #00ff88;">${s.score.toFixed(1)}</strong></span>
@@ -343,7 +393,8 @@
                                         <span>Attempts: <strong style="color: #667eea;">${s.attempts}</strong></span>
                                     </div>
                                 </div>
-                            `).join('')}
+                            `;
+                            }).join('')}
                         </div>
                         ` : ''}
                         
@@ -353,7 +404,7 @@
                             ${training.topVulnerablePersonas.slice(0, 3).map((p, i) => `
                                 <div style="padding: 10px; margin-bottom: 8px; background: #0a0e27; border-radius: 6px; border-left: 3px solid ${i === 0 ? '#ff4444' : i === 1 ? '#ff6b6b' : '#ff8888'};">
                                     <div style="color: #e0e0e0; font-size: 13px; margin-bottom: 5px;">
-                                        <strong>${i + 1}. Persona ID: ${p.personaId}</strong>
+                                        <strong>${i + 1}. ${p.personaName || `Persona ${p.personaId}`}</strong>
                                     </div>
                                     <div style="display: flex; gap: 15px; font-size: 11px; color: #888;">
                                         <span>Vulnerability: <strong style="color: #ff4444;">${p.vulnerabilityScore.toFixed(1)}</strong></span>

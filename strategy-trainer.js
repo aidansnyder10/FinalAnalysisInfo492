@@ -134,7 +134,9 @@ class StrategyTrainer {
 
         // Initialize persona vulnerabilities
         this.allPersonas.forEach(persona => {
-            if (!this.personaVulnerabilities[persona.id]) {
+            // Normalize ID to string for consistent key storage
+            const personaIdStr = String(persona.id);
+            if (!this.personaVulnerabilities[personaIdStr]) {
                 // Default vulnerability based on access level
                 let defaultVulnerability = 30;
                 if (persona.accessLevel === 'Critical') defaultVulnerability = 50;
@@ -142,7 +144,7 @@ class StrategyTrainer {
                 else if (persona.accessLevel === 'Medium') defaultVulnerability = 30;
                 else if (persona.accessLevel === 'Low') defaultVulnerability = 20;
 
-                this.personaVulnerabilities[persona.id] = {
+                this.personaVulnerabilities[personaIdStr] = {
                     attempts: 0,
                     successes: 0,
                     bypassRate: defaultVulnerability,
@@ -239,7 +241,8 @@ class StrategyTrainer {
                 urgencyLevel: email.urgencyLevel
             };
             const strategyKey = this.getStrategyKey(strategy);
-            const personaId = email.targetPersona?.id;
+            // Normalize persona ID to string for consistent key storage
+            const personaId = email.targetPersona?.id != null ? String(email.targetPersona.id) : null;
             const combinationKey = personaId ? this.getCombinationKey(strategy, personaId) : null;
 
             // Get ACTUAL email result from inbox file
@@ -443,29 +446,53 @@ class StrategyTrainer {
      * @param {number} count - Number of targets to select
      */
     selectBestTargets(count = 3) {
-        // Sort personas by vulnerability score
-        const sortedPersonas = [...this.allPersonas].sort((a, b) => {
-            const scoreA = this.personaVulnerabilities[a.id]?.vulnerabilityScore || 0;
-            const scoreB = this.personaVulnerabilities[b.id]?.vulnerabilityScore || 0;
-            return scoreB - scoreA; // Descending order
+        // Calculate selection scores for each persona
+        // Combines vulnerability score with exploration bonus
+        const personaScores = this.allPersonas.map(persona => {
+            // Normalize ID to string for consistent key lookup
+            const personaIdStr = String(persona.id);
+            const personaData = this.personaVulnerabilities[personaIdStr];
+            const attempts = personaData?.attempts || 0;
+            const vulnerabilityScore = personaData?.vulnerabilityScore || 0;
+            
+            // Exploration bonus: prioritize under-explored personas
+            // If a persona has fewer than minAttemptsForLearning attempts, give it bonus
+            const explorationBonus = attempts < this.minAttemptsForLearning 
+                ? (this.minAttemptsForLearning - attempts) * 20 // Big bonus for unexplored
+                : attempts < (this.minAttemptsForLearning * 2)
+                ? (this.minAttemptsForLearning * 2 - attempts) * 10 // Medium bonus for under-explored
+                : 0; // No bonus for well-explored
+            
+            // Confidence weight: weight vulnerability score by confidence (number of attempts)
+            // But cap it so we don't ignore under-explored personas completely
+            const confidence = Math.min(attempts / this.minAttemptsForLearning, 1.5);
+            const adjustedVulnerabilityScore = vulnerabilityScore * Math.min(confidence, 1.0);
+            
+            // Final score = adjusted vulnerability + exploration bonus
+            const finalScore = adjustedVulnerabilityScore + explorationBonus;
+            
+            return {
+                persona,
+                finalScore,
+                vulnerabilityScore,
+                attempts,
+                explorationBonus
+            };
         });
 
-        // Select top N, but add some randomness to avoid always hitting same targets
-        const explorationCount = Math.max(1, Math.floor(count * this.explorationRate));
-        const exploitationCount = count - explorationCount;
+        // Sort by final score (descending)
+        personaScores.sort((a, b) => b.finalScore - a.finalScore);
 
-        const selected = [];
-        
-        // Add top vulnerable personas (exploitation)
-        for (let i = 0; i < exploitationCount && i < sortedPersonas.length; i++) {
-            selected.push(sortedPersonas[i]);
-        }
+        // Select top N personas
+        const selected = personaScores.slice(0, count).map(item => item.persona);
 
-        // Add some random personas (exploration)
-        const remaining = sortedPersonas.filter(p => !selected.includes(p));
-        for (let i = 0; i < explorationCount && remaining.length > 0; i++) {
-            const randomIndex = Math.floor(Math.random() * remaining.length);
-            selected.push(remaining.splice(randomIndex, 1)[0]);
+        // Log selection reason for debugging (occasionally)
+        if (Math.random() < 0.1) { // 10% chance to log
+            this.log(`Target selection: ${selected.map(p => {
+                const personaIdStr = String(p.id);
+                const data = this.personaVulnerabilities[personaIdStr];
+                return `${p.name} (vuln: ${data?.vulnerabilityScore?.toFixed(1) || 0}, attempts: ${data?.attempts || 0})`;
+            }).join(', ')}`);
         }
 
         return selected;
@@ -475,11 +502,13 @@ class StrategyTrainer {
      * Get the best strategy for a specific persona based on combination scores
      */
     getBestStrategyForPersona(personaId) {
+        // Normalize ID to string for consistent key lookup
+        const personaIdStr = String(personaId);
         let bestStrategy = null;
         let bestScore = -1;
 
         this.allStrategies.forEach(strategy => {
-            const comboKey = this.getCombinationKey(strategy, personaId);
+            const comboKey = this.getCombinationKey(strategy, personaIdStr);
             const comboData = this.combinations[comboKey];
             
             if (comboData && comboData.attempts >= this.minAttemptsForLearning) {
@@ -513,10 +542,11 @@ class StrategyTrainer {
 
         const personas = Object.keys(this.personaVulnerabilities).map(id => {
             const data = this.personaVulnerabilities[id];
-            const persona = this.allPersonas.find(p => p.id == id);
+            // Handle both string and number IDs (JS object keys are strings)
+            const persona = this.allPersonas.find(p => String(p.id) === String(id));
             return {
                 personaId: id,
-                personaName: persona?.name || 'Unknown',
+                personaName: persona?.name || `Persona ${id}`,
                 ...data
             };
         }).sort((a, b) => b.vulnerabilityScore - a.vulnerabilityScore);

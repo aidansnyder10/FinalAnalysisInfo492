@@ -735,7 +735,7 @@ Return ONLY the JSON object, nothing else.`;
         
         console.log('\n🎯 Top 3 Vulnerable Personas:');
         stats.topVulnerablePersonas.slice(0, 3).forEach((p, i) => {
-            console.log(`   ${i + 1}. ${p.personaName} (ID: ${p.personaId})`);
+            console.log(`   ${i + 1}. ${p.personaName || `Persona ${p.personaId}`}`);
             console.log(`      Vulnerability: ${p.vulnerabilityScore.toFixed(2)} | Bypass: ${p.bypassRate.toFixed(2)}% | Click: ${p.clickRate.toFixed(2)}% | Attempts: ${p.attempts}`);
         });
         console.log('');
