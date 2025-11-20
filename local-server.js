@@ -938,19 +938,21 @@ app.get('/api/agent/status', (req, res) => {
         
         // Get the cutoff time (when agent started/reset) from agentStatus
         // Use startTime from metrics file - this is set when metrics are reset or agent starts
-        // Also check file modification time as a fallback
+        // Use the EARLIER time to ensure we include all emails after the reset
         if (agentStatus.startTime) {
-            cutoffTime = new Date(agentStatus.startTime).getTime();
+            const startTimeMs = new Date(agentStatus.startTime).getTime();
+            cutoffTime = startTimeMs;
             
-            // Also check metrics file modification time - use the later of the two
+            // Also check metrics file modification time - use the EARLIER of the two
+            // This ensures we don't accidentally exclude emails
             try {
                 if (fs.existsSync(agentMetricsFile)) {
                     const stats = fs.statSync(agentMetricsFile);
                     const fileModTime = stats.mtime.getTime();
-                    // Use the later time (more recent) to ensure we don't miss emails
-                    if (fileModTime > cutoffTime) {
+                    // Use the EARLIER time to be more inclusive
+                    if (fileModTime < cutoffTime) {
                         cutoffTime = fileModTime;
-                        console.log(`[Agent Status] Using metrics file modification time as cutoff: ${new Date(cutoffTime).toISOString()}`);
+                        console.log(`[Agent Status] Using metrics file modification time as cutoff: ${new Date(cutoffTime).toISOString()} (earlier than startTime)`);
                     } else {
                         console.log(`[Agent Status] Using startTime as cutoff: ${new Date(cutoffTime).toISOString()}`);
                     }
@@ -971,6 +973,8 @@ app.get('/api/agent/status', (req, res) => {
                 // Filter emails to only include those deployed AFTER the restart
                 let filteredEmails = emails;
                 if (cutoffTime) {
+                    // Subtract 1 minute buffer to account for timing differences
+                    const cutoffWithBuffer = cutoffTime - (60 * 1000);
                     filteredEmails = emails.filter(e => {
                         const emailTime = e.receivedAt || e.timestamp;
                         if (!emailTime) {
@@ -978,9 +982,13 @@ app.get('/api/agent/status', (req, res) => {
                             return false;
                         }
                         const emailTimeMs = new Date(emailTime).getTime();
-                        return emailTimeMs >= cutoffTime;
+                        const isAfterCutoff = emailTimeMs >= cutoffWithBuffer;
+                        if (!isAfterCutoff) {
+                            console.log(`[Agent Status] Excluding email ${e.id}: ${new Date(emailTimeMs).toISOString()} < ${new Date(cutoffWithBuffer).toISOString()}`);
+                        }
+                        return isAfterCutoff;
                     });
-                    console.log(`[Agent Status] Filtered emails (after ${new Date(cutoffTime).toISOString()}): ${filteredEmails.length}`);
+                    console.log(`[Agent Status] Filtered emails (after ${new Date(cutoffWithBuffer).toISOString()}): ${filteredEmails.length} out of ${emails.length} total`);
                 } else {
                     console.log(`[Agent Status] No cutoff time, using all ${emails.length} emails`);
                 }
