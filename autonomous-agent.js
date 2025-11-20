@@ -404,9 +404,30 @@ Return ONLY the JSON object, nothing else.`;
         const selectedTargets = this.strategyTrainer.selectBestTargets(CONFIG.MAX_TARGETS_PER_CYCLE);
         
         // For each target, use persona-specific best strategy if available
-        const targetStrategies = selectedTargets.map(persona => {
-            const bestStrategy = this.strategyTrainer.getBestStrategyForPersona(persona.id);
-            return { persona, strategy: bestStrategy };
+        // Track used strategies to ensure variation within the same cycle
+        const usedStrategies = new Set();
+        const targetStrategies = selectedTargets.map((persona, index) => {
+            let strategy = this.strategyTrainer.getBestStrategyForPersona(persona.id);
+            const strategyKey = `${strategy.model}|${strategy.attackLevel}|${strategy.urgencyLevel}`;
+            
+            // If this strategy was already used in this cycle, try to get a different one
+            if (usedStrategies.has(strategyKey) && selectedTargets.length > 1) {
+                // Get all available strategies
+                const allStrategies = this.strategyTrainer.allStrategies || [];
+                const availableStrategies = allStrategies.filter(s => {
+                    const key = `${s.model}|${s.attackLevel}|${s.urgencyLevel}`;
+                    return !usedStrategies.has(key);
+                });
+                
+                // If we have alternatives, use one of them
+                if (availableStrategies.length > 0) {
+                    strategy = availableStrategies[Math.floor(Math.random() * availableStrategies.length)];
+                    this.log(`Using alternative strategy for ${persona.name} to ensure variation`);
+                }
+            }
+            
+            usedStrategies.add(`${strategy.model}|${strategy.attackLevel}|${strategy.urgencyLevel}`);
+            return { persona, strategy };
         });
         
         this.log(`Targeting ${selectedTargets.length} personas with trainer-selected strategies`);
