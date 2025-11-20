@@ -118,22 +118,25 @@ class AutonomousDefenseAgent {
         const senderEmail = (email.senderEmail || '').toLowerCase();
         const urls = email.urls || this.extractUrls(content) || [];
         
-        let riskScore = 50; // Base score
+        // Realistic base score: Most emails are legitimate (industry standard)
+        let riskScore = 25; // Base score (lower = more realistic, assumes most emails are safe)
         let riskLevel = 'low';
         
-        // URL analysis
+        // URL analysis (less aggressive penalties)
         if (urls.length > 0) {
             const urlAuthenticity = this.analyzeUrlAuthenticity(urls, senderEmail);
             if (urlAuthenticity < 30) {
-                riskScore += 35;
+                riskScore += 40; // Obvious URL issues (shorteners, IPs, mismatches)
             } else if (urlAuthenticity < 60) {
-                riskScore += 20;
+                riskScore += 25; // Moderate URL concerns
+            } else if (urlAuthenticity < 80) {
+                riskScore += 10; // Minor URL concerns
             }
         }
         
-        // Keyword analysis
+        // Keyword analysis (more nuanced detection)
         const urgencyKeywords = ['urgent', 'immediate', 'critical', 'asap', 'action required'];
-        const credentialKeywords = ['password', 'credentials', 'login', 'account', 'verify account'];
+        const credentialKeywords = ['password', 'credentials', 'login', 'verify account'];
         const securityKeywords = ['security breach', 'unauthorized access', 'suspicious activity'];
         
         let urgencyCount = 0;
@@ -149,34 +152,46 @@ class AutonomousDefenseAgent {
         let securityCount = 0;
         securityKeywords.forEach(kw => {
             if (content.includes(kw)) securityCount++;
-        });
+        }
         
-        // Risk scoring
+        // Risk scoring (realistic thresholds - requires multiple indicators)
+        // Multiple strong indicators = high risk
         if (urgencyCount >= 2 && credentialCount >= 2) {
+            riskScore += 35; // High risk - obvious phishing pattern
+        } else if (credentialCount >= 2 && urgencyCount >= 1) {
             riskScore += 30; // High risk
         } else if (credentialCount >= 1 && urgencyCount >= 1) {
             riskScore += 20; // Medium-high risk
+        } else if (securityCount >= 1 && urgencyCount >= 1) {
+            riskScore += 18; // Medium-high risk
         } else if (securityCount >= 1) {
-            riskScore += 15;
+            riskScore += 12; // Medium risk
         } else if (credentialCount >= 1) {
-            riskScore += 10;
+            riskScore += 8; // Low-medium risk
+        } else if (urgencyCount >= 2) {
+            riskScore += 10; // Medium risk (urgency alone)
+        } else if (urgencyCount >= 1) {
+            riskScore += 5; // Low risk (single urgency word)
         }
         
-        // Sender analysis
+        // Sender analysis (minor indicator)
         if (senderEmail.includes('noreply') || senderEmail.includes('no-reply')) {
-            riskScore += 5;
+            riskScore += 3; // Minor risk indicator
         }
         
         // Normalize risk score
         riskScore = Math.min(100, Math.max(0, riskScore));
         
-        // Determine risk level
-        if (riskScore >= 70) {
-            riskLevel = 'high';
-        } else if (riskScore >= 40) {
-            riskLevel = 'medium';
+        // Realistic risk level thresholds (industry standard)
+        // High risk = obvious phishing (blocked)
+        // Medium risk = suspicious (reported for review)
+        // Low risk = appears safe (bypassed)
+        if (riskScore >= 80) {
+            riskLevel = 'high'; // Blocked - obvious phishing
+        } else if (riskScore >= 55) {
+            riskLevel = 'medium'; // Reported - suspicious, needs review
         } else {
-            riskLevel = 'low';
+            riskLevel = 'low'; // Bypassed - appears legitimate
         }
         
         return {
