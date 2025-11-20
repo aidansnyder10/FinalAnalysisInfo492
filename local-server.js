@@ -938,9 +938,26 @@ app.get('/api/agent/status', (req, res) => {
         
         // Get the cutoff time (when agent started/reset) from agentStatus
         // Use startTime from metrics file - this is set when metrics are reset or agent starts
+        // Also check file modification time as a fallback
         if (agentStatus.startTime) {
             cutoffTime = new Date(agentStatus.startTime).getTime();
-            console.log(`[Agent Status] Using cutoff time: ${new Date(cutoffTime).toISOString()} (from startTime: ${agentStatus.startTime})`);
+            
+            // Also check metrics file modification time - use the later of the two
+            try {
+                if (fs.existsSync(agentMetricsFile)) {
+                    const stats = fs.statSync(agentMetricsFile);
+                    const fileModTime = stats.mtime.getTime();
+                    // Use the later time (more recent) to ensure we don't miss emails
+                    if (fileModTime > cutoffTime) {
+                        cutoffTime = fileModTime;
+                        console.log(`[Agent Status] Using metrics file modification time as cutoff: ${new Date(cutoffTime).toISOString()}`);
+                    } else {
+                        console.log(`[Agent Status] Using startTime as cutoff: ${new Date(cutoffTime).toISOString()}`);
+                    }
+                }
+            } catch (error) {
+                console.log(`[Agent Status] Using startTime as cutoff: ${new Date(cutoffTime).toISOString()}`);
+            }
         } else {
             console.log(`[Agent Status] No startTime found, counting all emails`);
         }
