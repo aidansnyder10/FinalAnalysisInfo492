@@ -885,12 +885,12 @@ app.get('/api/agent/status', (req, res) => {
                         hours: Math.floor((uptime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
                         minutes: Math.floor((uptime % (1000 * 60 * 60)) / (1000 * 60))
                     },
-                    // Attack success metrics
-                    emailsBypassed: metrics.emailsBypassed || 0,
-                    emailsDetected: metrics.emailsDetected || 0,
-                    emailsClicked: metrics.emailsClicked || 0,
-                    bypassRate: metrics.bypassRate || 0,
-                    clickRate: metrics.clickRate || 0
+                    // Attack success metrics - these will be overridden with real-time values below
+                    emailsBypassed: 0,
+                    emailsDetected: 0,
+                    emailsClicked: 0,
+                    bypassRate: 0,
+                    clickRate: 0
                 };
             }
         } catch (error) {
@@ -990,6 +990,10 @@ app.get('/api/agent/status', (req, res) => {
         const totalEmails = realTimeBypassed + realTimeDetected;
         const realTimeBypassRate = totalEmails > 0 ? ((realTimeBypassed / totalEmails) * 100) : 0;
         const realTimeClickRate = realTimeBypassed > 0 ? ((realTimeClicked / realTimeBypassed) * 100) : 0;
+        
+        // Debug logging
+        console.log(`[Agent Status] Real-time metrics: bypassed=${realTimeBypassed}, detected=${realTimeDetected}, clicked=${realTimeClicked}, total=${totalEmails}`);
+        console.log(`[Agent Status] Rates: bypass=${realTimeBypassRate.toFixed(1)}%, click=${realTimeClickRate.toFixed(1)}%`);
         
         // Override agent status with REAL-TIME defense interaction metrics
         agentStatus.emailsBypassed = realTimeBypassed;
