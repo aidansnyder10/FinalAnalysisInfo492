@@ -155,7 +155,7 @@ class AutonomousDefenseAgent {
         let securityCount = 0;
         securityKeywords.forEach(kw => {
             if (content.includes(kw)) securityCount++;
-        }
+        });
         
         // Risk scoring (realistic thresholds - requires multiple indicators)
         // Multiple strong indicators = high risk
