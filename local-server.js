@@ -951,12 +951,36 @@ app.get('/api/agent/status', (req, res) => {
                 realTimeBypassed = bypassedEmails.length;
                 realTimeDetected = emails.filter(e => e.status === 'blocked' || e.status === 'reported').length;
                 
-                // Count clicked emails (from events or clicked property)
+                // Count clicked emails - check both persisted email.clicked property AND events array
+                // email.clicked is persisted to bank-inbox.json, so it survives server restarts
+                // events array is in-memory only, so check both to get complete picture
                 const bypassedEmailIds = new Set(bypassedEmails.map(e => e.id));
-                realTimeClicked = emails.filter(e => 
-                    bypassedEmailIds.has(e.id) && 
-                    (e.clicked === true || (e.events && e.events.some(ev => ev.event === 'clicked' && !ev.phantom)))
+                
+                // First, count emails with clicked property (persisted)
+                const clickedFromEmails = emails.filter(e => 
+                    bypassedEmailIds.has(e.id) && e.clicked === true
                 ).length;
+                
+                // Then, count clicked events from events array (in-memory, for clicks that happened after restart)
+                const clickedEvents = events.filter(e => 
+                    e.event === 'clicked' && 
+                    !e.phantom && 
+                    bypassedEmailIds.has(e.emailId)
+                );
+                
+                // Combine both (use Set to avoid double-counting if an email has both)
+                const clickedEmailIds = new Set();
+                emails.forEach(e => {
+                    if (bypassedEmailIds.has(e.id) && e.clicked === true) {
+                        clickedEmailIds.add(e.id);
+                    }
+                });
+                clickedEvents.forEach(e => {
+                    if (bypassedEmailIds.has(e.emailId)) {
+                        clickedEmailIds.add(e.emailId);
+                    }
+                });
+                realTimeClicked = clickedEmailIds.size;
             }
         } catch (error) {
             console.error('Error reading inbox file:', error);
