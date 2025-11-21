@@ -131,6 +131,27 @@ function simulateUserFlow(emailId, userId, campaignId, attackLevel, metadata = {
                         events.push(clickedEvent);
                         console.log(`[Simulation] Logged clicked event for email ${emailId} after ${clickedEvent.timeSinceSent.toFixed(1)} minutes`);
                         
+                        // Persist click to bank-inbox.json
+                        try {
+                            const inboxFile = './bank-inbox.json';
+                            if (fs.existsSync(inboxFile)) {
+                                const inboxData = fs.readFileSync(inboxFile, 'utf8');
+                                const emails = JSON.parse(inboxData);
+                                const email = emails.find(e => e.id === emailId);
+                                if (email && (email.status === 'delivered' || !email.status || email.status !== 'blocked' && email.status !== 'reported')) {
+                                    email.clicked = true;
+                                    email.clickedAt = new Date(clickedEvent.timestamp).toISOString();
+                                    if (email.openedAt) {
+                                        email.timeToClick = (clickedEvent.timestamp - new Date(email.openedAt).getTime()) / (1000 * 60);
+                                    }
+                                    fs.writeFileSync(inboxFile, JSON.stringify(emails, null, 2));
+                                    console.log(`[Simulation] Persisted click to bank-inbox.json for email ${emailId}`);
+                                }
+                            }
+                        } catch (error) {
+                            console.error('[Simulation] Error persisting click to inbox:', error);
+                        }
+                        
                         // Some users report after clicking (realized it's phishing)
                         if (Math.random() < SIMULATION_PARAMS.pReportAfterClick) {
                             const reportDelayMs = getExponentialDelay(SIMULATION_PARAMS.meanReportDelay) * 60 * 1000;
