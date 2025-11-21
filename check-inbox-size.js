@@ -13,7 +13,7 @@ console.log(`📧 Total emails in bank-inbox.json: ${emails.length}`);
 
 if (emails.length < 100) {
     console.log('\n⚠️  WARNING: Very few emails found!');
-    console.log('   Expected: ~901 emails');
+    console.log('   Expected: ~1561 emails');
     console.log('   Found: ' + emails.length);
     console.log('\n   The bank-inbox.json file may have been reset or is incomplete.');
     console.log('   You need to restore the full email data.');

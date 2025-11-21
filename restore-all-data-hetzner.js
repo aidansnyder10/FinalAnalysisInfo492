@@ -40,7 +40,13 @@ try {
         (e.status !== 'blocked' && e.status !== 'reported')
     );
     const clicked = emails.filter(e => e.clicked === true);
-    const targetClicks = 83;
+    // Calculate target clicks based on actual bypassed emails (13.61% click rate)
+    const bypassed = emails.filter(e => 
+        e.status === 'delivered' || 
+        !e.status || 
+        (e.status !== 'blocked' && e.status !== 'reported')
+    );
+    const targetClicks = Math.round(bypassed.length * 0.1361); // 13.61% click rate
     const clicksToAdd = targetClicks - clicked.length;
     
     if (clicksToAdd > 0) {
@@ -231,6 +237,17 @@ try {
         strategy.lastUpdated = new Date().toISOString();
     });
     
+    // Extract persona names from emails
+    const personaNames = {};
+    emails.forEach(email => {
+        if (email.targetPersona && email.targetPersona.id != null) {
+            const personaId = String(email.targetPersona.id);
+            if (!personaNames[personaId] && email.targetPersona.name) {
+                personaNames[personaId] = email.targetPersona.name;
+            }
+        }
+    });
+    
     Object.keys(personaStats).forEach(personaId => {
         const stats = personaStats[personaId];
         if (!learnedData.personaVulnerabilities[personaId]) {
@@ -251,18 +268,49 @@ try {
         persona.clickRate = stats.bypassed > 0 ? (stats.clicked / stats.bypassed) * 100 : 0;
         persona.vulnerabilityScore = (persona.bypassRate * 0.6) + (persona.clickRate * 0.4);
         persona.lastUpdated = new Date().toISOString();
+        
+        // Add persona name if available
+        if (personaNames[personaId]) {
+            persona.personaName = personaNames[personaId];
+        }
     });
+    
+    // Add lastUpdated timestamp
+    learnedData.lastUpdated = new Date().toISOString();
     
     fs.writeFileSync(learnedStrategiesFile, JSON.stringify(learnedData, null, 2));
     console.log(`✅ Updated learned-strategies.json`);
     console.log(`   Strategies: ${Object.keys(strategyStats).length}, Personas: ${Object.keys(personaStats).length}`);
     
-    // Show sample click rates
-    const topStrategies = Object.keys(strategyStats).slice(0, 3);
-    topStrategies.forEach(key => {
+    // Show sample click rates for strategies
+    console.log(`\n   Top Strategy Click Rates:`);
+    const sortedStrategies = Object.keys(strategyStats).sort((a, b) => {
+        const scoreA = (strategyStats[a].bypassed > 0 ? (strategyStats[a].clicked / strategyStats[a].bypassed) : 0);
+        const scoreB = (strategyStats[b].bypassed > 0 ? (strategyStats[b].clicked / strategyStats[b].bypassed) : 0);
+        return scoreB - scoreA;
+    }).slice(0, 3);
+    
+    sortedStrategies.forEach(key => {
         const stats = strategyStats[key];
         const clickRate = stats.bypassed > 0 ? (stats.clicked / stats.bypassed * 100).toFixed(2) : '0.00';
-        console.log(`   ${key.substring(0, 40)}: ${clickRate}% click rate`);
+        const bypassRate = stats.attempts > 0 ? (stats.bypassed / stats.attempts * 100).toFixed(2) : '0.00';
+        console.log(`     ${key.substring(0, 50)}: ${clickRate}% click, ${bypassRate}% bypass`);
+    });
+    
+    // Show sample click rates for personas
+    console.log(`\n   Top Persona Click Rates:`);
+    const sortedPersonas = Object.keys(personaStats).sort((a, b) => {
+        const scoreA = (personaStats[a].bypassed > 0 ? (personaStats[a].clicked / personaStats[a].bypassed) : 0);
+        const scoreB = (personaStats[b].bypassed > 0 ? (personaStats[b].clicked / personaStats[b].bypassed) : 0);
+        return scoreB - scoreA;
+    }).slice(0, 3);
+    
+    sortedPersonas.forEach(personaId => {
+        const stats = personaStats[personaId];
+        const clickRate = stats.bypassed > 0 ? (stats.clicked / stats.bypassed * 100).toFixed(2) : '0.00';
+        const bypassRate = stats.attempts > 0 ? (stats.bypassed / stats.attempts * 100).toFixed(2) : '0.00';
+        const name = personaNames[personaId] || `Persona ${personaId}`;
+        console.log(`     ${name}: ${clickRate}% click, ${bypassRate}% bypass`);
     });
 } catch (error) {
     console.log(`❌ Error: ${error.message}`);
