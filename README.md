@@ -1,3 +1,119 @@
+<Project Title> — <Industry> — <Defense/Offense>
+Course: INFO 498B — Agentic Cybersecurity with AI & LLMs
+Team: <Team # — names/NetIDs>
+One-line pitch: <What it does, for whom, why it matters>
+1) Live Demo
+Synthetic Industry: <URL> — status: <Up/Down> — test creds (fake): <user / pass>
+
+
+Agentic System: <URL> — status: <Up/Down> — notes: <brief>
+
+
+Logs/Observability (optional): <URL or path>
+
+
+2) Thesis & Outcome
+Original thesis (week 2): <1–2 sentences>
+
+
+Final verdict: <True / False / Partially true>
+
+
+Why (top evidence):
+
+
+<Evidence 1>
+
+
+<Evidence 2>
+
+
+<Evidence 3>
+
+
+3) What We Built
+Synthetic industry: <APIs/services, roles, data generator>
+
+
+Agentic system: <agents, tools, model providers, memory/eval>
+
+
+Key risks addressed (or exercised): <bullets>
+
+
+4) Roles, Auth, Data
+Roles & permissions: <Role → capabilities>
+
+
+Authentication: <how roles are authenticated and scoped>
+
+
+Data: synthetic only; generator + brief schema description
+
+
+5) Experiments Summary (Demos #3 - #5)
+Demo #3: <hypothesis> — <setup> — Result: <pass/fail + one sentence> — Evidence: <link/note>
+
+
+Demo #4 (continuous run): uptime <xx.x%>, incidents <n>, Improvement observed: <yes/no + brief>
+
+
+Demo #5 (final): <what was validated> — Result: <one sentence> — Evidence: <link/note>
+
+
+6) Key Results (plain text)
+Effectiveness: <e.g., detection/attack success %, MTTR trend>
+
+
+Reliability: <uptime / error patterns>
+
+
+Safety: <policy violations blocked, guardrails that mattered>
+
+
+7) How to Use / Deploy
+Prereqs: <accounts, env vars, keys (fake for lab), storage>
+
+
+Deploy steps: see docs/deploy.md
+
+
+Test steps: see docs/test-plan.md
+
+
+8) Safety, Ethics, Limits
+Synthetic data only; no real credentials or org systems.
+
+
+Controls: <role gating, throttling, sandboxing, policy checks>.
+
+
+Known limits/failure modes: <brief list>.
+
+
+9) Final Deliverables
+1000-word paper: <link>
+
+
+Slides: <link>
+
+
+Evidence folder (logs/screens): /evidence/
+
+
+10) Next Steps
+<Top improvement 1>
+
+
+<Top improvement 2>
+
+
+<Top improvement 3>
+
+
+Maintainers: <names> • Contact: <email>
+
+
 # SecureBank Admin Portal
 
 A realistic fake digital bank admin dashboard built with HTML, CSS, JavaScript, and Supabase integration.
