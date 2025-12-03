@@ -1051,6 +1051,60 @@ app.get('/api/agent/status', (req, res) => {
     }
 });
 
+// Endpoint: GET /api/agent/trends
+// Returns metrics trends for charting
+app.get('/api/agent/trends', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 20;
+        const SupabaseBackupHelper = require('./supabase-backup-helper');
+        
+        const supabaseUrl = process.env.SUPABASE_URL || 'https://cumodtrxkqakvjandlsw.supabase.co';
+        const supabaseKey = process.env.SUPABASE_ANON_KEY || '';
+        const backupHelper = new SupabaseBackupHelper(supabaseUrl, supabaseKey);
+        
+        const result = await backupHelper.getMetricsTrends(limit);
+        
+        if (result.success) {
+            res.json({
+                success: true,
+                trends: result.data
+            });
+        } else {
+            // Fallback: generate trends from local metrics history if available
+            const metricsFile = './agent-metrics.json';
+            if (fs.existsSync(metricsFile)) {
+                const metrics = JSON.parse(fs.readFileSync(metricsFile, 'utf8'));
+                const trends = [{
+                    cycle_number: metrics.totalCycles || 0,
+                    bypass_rate: metrics.bypassRate || 0,
+                    click_rate: metrics.clickRate || 0,
+                    emails_bypassed: metrics.emailsBypassed || 0,
+                    emails_clicked: metrics.emailsClicked || 0,
+                    created_at: new Date().toISOString()
+                }];
+                res.json({
+                    success: true,
+                    trends: trends,
+                    note: 'Using current metrics (history not available)'
+                });
+            } else {
+                res.json({
+                    success: false,
+                    trends: [],
+                    message: 'No trends data available'
+                });
+            }
+        }
+    } catch (error) {
+        console.error('[Agent] Error getting trends:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            message: error.message
+        });
+    }
+});
+
 // Endpoint: GET /api/agent/training-stats
 // Returns detailed training statistics from the strategy trainer
 app.get('/api/agent/training-stats', (req, res) => {

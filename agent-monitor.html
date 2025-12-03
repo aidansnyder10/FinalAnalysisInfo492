@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Autonomous Agent Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -144,6 +145,125 @@
             text-align: center;
             padding: 40px;
             color: #888;
+        }
+        
+        .email-item {
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .email-item:hover {
+            background: #151b35;
+            transform: translateX(5px);
+        }
+        
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            overflow: auto;
+        }
+        
+        .modal-content {
+            background: #1a1f3a;
+            margin: 5% auto;
+            padding: 30px;
+            border: 2px solid #ff4444;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 800px;
+            color: #e0e0e0;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #333;
+        }
+        
+        .modal-header h2 {
+            color: #ff4444;
+            margin: 0;
+        }
+        
+        .close-modal {
+            background: transparent;
+            border: none;
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .close-modal:hover {
+            color: #ff4444;
+        }
+        
+        .email-preview-body {
+            background: #0f1529;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            line-height: 1.6;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .email-preview-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #333;
+        }
+        
+        .email-meta-item {
+            background: #0f1529;
+            padding: 10px;
+            border-radius: 6px;
+        }
+        
+        .email-meta-label {
+            color: #888;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+        
+        .email-meta-value {
+            color: #e0e0e0;
+            font-weight: bold;
+        }
+        
+        /* Chart Container */
+        .chart-container {
+            background: #1a1f3a;
+            border: 2px solid #333;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .chart-wrapper {
+            position: relative;
+            height: 300px;
+            margin-top: 15px;
         }
     </style>
 </head>
@@ -423,11 +543,12 @@
                         <h2>📧 Recent Emails Deployed (Last 10)</h2>
                         ${recentEmails.length === 0 
                             ? '<div class="loading">No emails deployed yet. The agent will generate emails every 5 minutes.</div>'
-                            : recentEmails.map(email => {
+                            : recentEmails.map((email, index) => {
                                 const statusColor = email.status === 'blocked' ? '#ff4444' : email.status === 'reported' ? '#ffaa00' : '#00ff88';
                                 const statusText = email.status === 'blocked' ? 'BLOCKED' : email.status === 'reported' ? 'REPORTED' : email.status === 'delivered' ? 'BYPASSED' : 'PENDING';
+                                const emailData = JSON.stringify(email).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                                 return `
-                                <div class="email-item" style="border-left-color: ${statusColor};">
+                                <div class="email-item" style="border-left-color: ${statusColor};" onclick="showEmailPreview(${index})" data-email-index="${index}">
                                     <div class="subject">${email.subject || 'No subject'}</div>
                                     <div class="meta">
                                         <span>To: ${email.targetPersona?.name || 'Unknown'}</span>
@@ -442,9 +563,22 @@
                             }).join('')
                         }
                     </div>
+                    
+                    <div class="chart-container">
+                        <h2>📈 Performance Trends</h2>
+                        <div class="chart-wrapper">
+                            <canvas id="trendsChart"></canvas>
+                        </div>
+                    </div>
                 `;
                 
                 document.getElementById('content').innerHTML = content;
+                
+                // Store recent emails globally for preview
+                window.recentEmailsData = recentEmails;
+                
+                // Load and render trends chart
+                loadTrendsChart();
                 
             } catch (error) {
                 document.getElementById('content').innerHTML = `
@@ -456,6 +590,195 @@
                         </div>
                     </div>
                 `;
+            }
+        }
+        
+        let trendsChart = null;
+        
+        async function loadTrendsChart() {
+            try {
+                const response = await fetch('/api/agent/trends?limit=20');
+                const result = await response.json();
+                
+                if (!result.success || !result.trends || result.trends.length === 0) {
+                    const chartContainer = document.getElementById('trendsChart');
+                    if (chartContainer && chartContainer.parentElement) {
+                        chartContainer.parentElement.innerHTML = '<p style="color: #888; text-align: center; padding: 40px;">No trend data available yet. Data will appear after multiple cycles.</p>';
+                    }
+                    return;
+                }
+                
+                const trends = result.trends;
+                const labels = trends.map(t => `Cycle ${t.cycle_number || 0}`);
+                const bypassRates = trends.map(t => parseFloat(t.bypass_rate || 0));
+                const clickRates = trends.map(t => parseFloat(t.click_rate || 0));
+                
+                const ctx = document.getElementById('trendsChart');
+                if (!ctx) return;
+                
+                if (trendsChart) {
+                    trendsChart.destroy();
+                }
+                
+                trendsChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Bypass Rate %',
+                                data: bypassRates,
+                                borderColor: '#00ff88',
+                                backgroundColor: 'rgba(0, 255, 136, 0.1)',
+                                tension: 0.4,
+                                fill: true
+                            },
+                            {
+                                label: 'Click Rate %',
+                                data: clickRates,
+                                borderColor: '#ffaa00',
+                                backgroundColor: 'rgba(255, 170, 0, 0.1)',
+                                tension: 0.4,
+                                fill: true
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: '#e0e0e0'
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                ticks: {
+                                    color: '#888'
+                                },
+                                grid: {
+                                    color: '#333'
+                                }
+                            },
+                            y: {
+                                ticks: {
+                                    color: '#888',
+                                    callback: function(value) {
+                                        return value + '%';
+                                    }
+                                },
+                                grid: {
+                                    color: '#333'
+                                },
+                                beginAtZero: true,
+                                max: 100
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading trends:', error);
+            }
+        }
+        
+        function showEmailPreview(index) {
+            const email = window.recentEmailsData && window.recentEmailsData[index];
+            if (!email) {
+                console.error('Email not found at index:', index);
+                return;
+            }
+            
+            let modal = document.getElementById('emailPreviewModal');
+            if (!modal) {
+                // Create modal if it doesn't exist
+                const modalHTML = `
+                    <div id="emailPreviewModal" class="modal">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h2>📧 Email Preview</h2>
+                                <button class="close-modal" onclick="closeEmailPreview()">&times;</button>
+                            </div>
+                            <div id="emailPreviewContent"></div>
+                        </div>
+                    </div>
+                `;
+                document.body.insertAdjacentHTML('beforeend', modalHTML);
+                modal = document.getElementById('emailPreviewModal');
+            }
+            
+            const content = document.getElementById('emailPreviewContent');
+            
+            const statusColor = email.status === 'blocked' ? '#ff4444' : email.status === 'reported' ? '#ffaa00' : '#00ff88';
+            const statusText = email.status === 'blocked' ? 'BLOCKED' : email.status === 'reported' ? 'REPORTED' : email.status === 'delivered' ? 'BYPASSED' : 'PENDING';
+            
+            content.innerHTML = `
+                <div>
+                    <div style="margin-bottom: 15px;">
+                        <div style="color: #888; font-size: 12px; margin-bottom: 5px;">Subject</div>
+                        <div style="color: #fff; font-size: 18px; font-weight: bold;">${email.subject || 'No subject'}</div>
+                    </div>
+                    
+                    <div class="email-preview-meta">
+                        <div class="email-meta-item">
+                            <div class="email-meta-label">From</div>
+                            <div class="email-meta-value">${email.senderEmail || email.sender || 'Unknown'}</div>
+                        </div>
+                        <div class="email-meta-item">
+                            <div class="email-meta-label">To</div>
+                            <div class="email-meta-value">${email.targetPersona?.name || email.recipient || 'Unknown'}</div>
+                        </div>
+                        <div class="email-meta-item">
+                            <div class="email-meta-label">Model</div>
+                            <div class="email-meta-value">${email.model || 'Unknown'}</div>
+                        </div>
+                        <div class="email-meta-item">
+                            <div class="email-meta-label">Attack Level</div>
+                            <div class="email-meta-value">${email.attackLevel || 'Unknown'}</div>
+                        </div>
+                        <div class="email-meta-item">
+                            <div class="email-meta-label">Risk Score</div>
+                            <div class="email-meta-value" style="color: ${email.riskScore >= 70 ? '#ff4444' : email.riskScore >= 40 ? '#ffaa00' : '#00ff88'}">${email.riskScore || 0}/100</div>
+                        </div>
+                        <div class="email-meta-item">
+                            <div class="email-meta-label">Status</div>
+                            <div class="email-meta-value" style="color: ${statusColor}">${statusText}</div>
+                        </div>
+                        <div class="email-meta-item">
+                            <div class="email-meta-label">Received</div>
+                            <div class="email-meta-value">${formatDate(email.receivedAt)}</div>
+                        </div>
+                        ${email.clicked ? `
+                        <div class="email-meta-item">
+                            <div class="email-meta-label">Clicked</div>
+                            <div class="email-meta-value" style="color: #ffaa00;">Yes</div>
+                        </div>
+                        ` : ''}
+                    </div>
+                    
+                    <div style="margin-top: 20px;">
+                        <div style="color: #888; font-size: 12px; margin-bottom: 10px;">Email Body</div>
+                        <div class="email-preview-body">${email.body || email.content || 'No content available'}</div>
+                    </div>
+                </div>
+            `;
+            
+            modal.style.display = 'block';
+        }
+        
+        function closeEmailPreview() {
+            const modal = document.getElementById('emailPreviewModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('emailPreviewModal');
+            if (event.target === modal) {
+                closeEmailPreview();
             }
         }
         

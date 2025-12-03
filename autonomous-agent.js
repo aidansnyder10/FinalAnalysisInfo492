@@ -12,6 +12,7 @@ try {
 const fs = require('fs');
 const path = require('path');
 const StrategyTrainer = require('./strategy-trainer');
+const SupabaseBackupHelper = require('./supabase-backup-helper');
 
 // Configuration
 const CONFIG = {
@@ -118,6 +119,11 @@ class AutonomousAgent {
         // Initialize strategy trainer for self-learning
         this.strategyTrainer = new StrategyTrainer(ATTACK_STRATEGIES, TARGET_PERSONAS);
         
+        // Initialize Supabase backup helper
+        const supabaseUrl = process.env.SUPABASE_URL || 'https://cumodtrxkqakvjandlsw.supabase.co';
+        const supabaseKey = process.env.SUPABASE_ANON_KEY || '';
+        this.backupHelper = new SupabaseBackupHelper(supabaseUrl, supabaseKey);
+        
         // Load existing metrics
         this.loadMetrics();
     }
@@ -147,9 +153,25 @@ class AutonomousAgent {
         }
     }
 
-    saveMetrics() {
+    async saveMetrics() {
         try {
+            // Save to local file
             fs.writeFileSync(CONFIG.METRICS_FILE, JSON.stringify(this.stats, null, 2));
+            
+            // Backup to Supabase (async, don't block on failure)
+            if (this.backupHelper && this.backupHelper.enabled) {
+                this.backupHelper.backupAgentMetrics(this.stats, {
+                    agent_type: 'offense',
+                    cycle: this.stats.totalCycles
+                }).catch(err => {
+                    this.log(`Backup failed (non-critical): ${err.message}`, 'WARN');
+                });
+                
+                // Save metrics history for trends
+                this.backupHelper.saveMetricsHistory(this.stats).catch(err => {
+                    this.log(`History save failed (non-critical): ${err.message}`, 'WARN');
+                });
+            }
         } catch (error) {
             this.log(`Failed to save metrics: ${error.message}`, 'ERROR');
         }
