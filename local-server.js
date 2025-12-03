@@ -849,10 +849,37 @@ app.post('/api/agent/deploy-emails', (req, res) => {
         try {
             console.log(`[Deploy] Before: ${existingEmails.length} emails in inbox`);
             console.log(`[Deploy] Adding: ${emails.length} new emails`);
-            fs.writeFileSync(inboxFile, JSON.stringify(existingEmails, null, 2));
-            console.log(`[Deploy] After: ${existingEmails.length} emails in inbox (saved to file)`);
+            console.log(`[Deploy] Email IDs being added: ${emails.map(e => e.id).join(', ')}`);
+            
+            // Verify we're actually adding emails
+            const beforeCount = existingEmails.length;
+            emails.forEach(email => {
+                if (!email.id) {
+                    console.warn(`[Deploy] WARNING: Email missing ID:`, email.subject);
+                }
+                existingEmails.push(email);
+            });
+            const afterCount = existingEmails.length;
+            
+            if (afterCount !== beforeCount + emails.length) {
+                console.error(`[Deploy] ERROR: Email count mismatch! Before: ${beforeCount}, After: ${afterCount}, Expected: ${beforeCount + emails.length}`);
+            }
+            
+            // Write to file
+            const fileContent = JSON.stringify(existingEmails, null, 2);
+            fs.writeFileSync(inboxFile, fileContent);
+            
+            // Verify file was written correctly
+            const verifyData = fs.readFileSync(inboxFile, 'utf8');
+            const verifyEmails = JSON.parse(verifyData);
+            console.log(`[Deploy] After: ${verifyEmails.length} emails in inbox (verified from file)`);
+            
+            if (verifyEmails.length !== existingEmails.length) {
+                console.error(`[Deploy] ERROR: File verification failed! Expected ${existingEmails.length}, got ${verifyEmails.length}`);
+            }
         } catch (error) {
             console.error('[Deploy] Error writing inbox file:', error);
+            console.error('[Deploy] Error stack:', error.stack);
         }
 
         // Also trigger browser localStorage update via events (if browsers are connected)
