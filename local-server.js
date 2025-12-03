@@ -975,12 +975,17 @@ app.get('/api/agent/status', (req, res) => {
                 recentEmails = emails.slice(-10).reverse();
                 
                 // Calculate REAL-TIME defense interaction metrics from inbox
-                const bypassedEmails = emails.filter(e => 
-                    e.status === 'delivered' || 
-                    e.status === undefined || 
-                    e.status === null ||
-                    (e.status !== 'blocked' && e.status !== 'reported')
-                );
+                // Bypassed = emails that are delivered OR have no status (not yet analyzed) OR are not blocked/reported
+                const bypassedEmails = emails.filter(e => {
+                    // If status is explicitly 'delivered', it's bypassed
+                    if (e.status === 'delivered') return true;
+                    // If status is undefined/null/empty, it's bypassed (not yet analyzed)
+                    if (!e.status || e.status === undefined || e.status === null || e.status === '') return true;
+                    // If status exists but is not 'blocked' or 'reported', it's bypassed
+                    if (e.status !== 'blocked' && e.status !== 'reported') return true;
+                    // Otherwise, it's detected
+                    return false;
+                });
                 realTimeBypassed = bypassedEmails.length;
                 realTimeDetected = emails.filter(e => e.status === 'blocked' || e.status === 'reported').length;
                 
