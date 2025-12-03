@@ -811,9 +811,14 @@ app.post('/api/agent/deploy-emails', (req, res) => {
             if (fs.existsSync(inboxFile)) {
                 const data = fs.readFileSync(inboxFile, 'utf8');
                 existingEmails = JSON.parse(data);
+            } else {
+                // File doesn't exist yet - initialize empty array
+                // This ensures the file will be created when we write to it
+                existingEmails = [];
             }
         } catch (error) {
             console.error('Error reading inbox file:', error);
+            existingEmails = []; // Initialize empty array on error
         }
 
         // Add new emails and trigger user engagement simulation
@@ -931,9 +936,16 @@ app.get('/api/agent/status', (req, res) => {
                     return { strategy: key, ...s };
                 }).sort((a, b) => b.score - a.score);
                 
+                // Retrieve persona names from learned data if available
+                const personaNamesMap = learned.personaNames || {};
+                
                 const personas = Object.keys(learned.personaVulnerabilities || {}).map(id => {
                     const p = learned.personaVulnerabilities[id];
-                    return { personaId: id, ...p };
+                    return { 
+                        personaId: id,
+                        personaName: personaNamesMap[id] || `Persona ${id}`, // Use stored name or fallback
+                        ...p 
+                    };
                 }).sort((a, b) => b.vulnerabilityScore - a.vulnerabilityScore);
                 
                 trainingStats = {

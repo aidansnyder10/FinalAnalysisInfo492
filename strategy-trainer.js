@@ -88,11 +88,18 @@ class StrategyTrainer {
                 fs.copyFileSync(LEARNED_STRATEGIES_FILE, LEARNED_STRATEGIES_BACKUP);
             }
             
+            // Store persona names for easier display in UI
+            const personaNames = {};
+            this.allPersonas.forEach(p => {
+                personaNames[String(p.id)] = p.name;
+            });
+            
             const data = {
                 lastUpdated: new Date().toISOString(),
                 strategyScores: this.strategyScores,
                 personaVulnerabilities: this.personaVulnerabilities,
                 combinations: this.combinations,
+                personaNames: personaNames, // Store persona names for display
                 learningParams: {
                     successThreshold: this.successThreshold,
                     explorationRate: this.explorationRate,
@@ -179,40 +186,51 @@ class StrategyTrainer {
         const statuses = {};
         
         try {
-            if (fs.existsSync(this.inboxFile)) {
-                const data = fs.readFileSync(this.inboxFile, 'utf8');
-                const emails = JSON.parse(data);
-                
-                // Create a map of email IDs to their status
-                const emailMap = {};
-                emails.forEach(email => {
-                    emailMap[email.id] = email;
-                });
-                
-                // Check each email ID
+            if (!fs.existsSync(this.inboxFile)) {
+                // File doesn't exist yet - all emails are still being processed
+                this.log(`Inbox file ${this.inboxFile} does not exist yet - emails may not be deployed`, 'WARN');
                 emailIds.forEach(emailId => {
-                    const email = emailMap[emailId];
-                    if (email) {
-                        // Email bypassed if status is 'delivered' or undefined/null
-                        const bypassed = email.status === 'delivered' || 
-                                       email.status === undefined || 
-                                       email.status === null ||
-                                       (email.status !== 'blocked' && email.status !== 'reported');
-                        
-                        // Check if email was clicked (look for clicked events)
-                        // We'll check this from the events array if available, or use a simple heuristic
-                        const clicked = email.clicked === true || 
-                                      (email.events && email.events.some(e => e.event === 'clicked' && !e.phantom));
-                        
-                        statuses[emailId] = { bypassed, clicked };
-                    } else {
-                        // Email not found yet, assume it hasn't been processed
-                        statuses[emailId] = { bypassed: false, clicked: false };
-                    }
+                    statuses[emailId] = { bypassed: false, clicked: false };
                 });
+                return statuses;
             }
+            
+            const data = fs.readFileSync(this.inboxFile, 'utf8');
+            const emails = JSON.parse(data);
+            
+            // Create a map of email IDs to their status
+            const emailMap = {};
+            emails.forEach(email => {
+                emailMap[email.id] = email;
+            });
+            
+            // Check each email ID
+            emailIds.forEach(emailId => {
+                const email = emailMap[emailId];
+                if (email) {
+                    // Email bypassed if status is 'delivered' or undefined/null
+                    const bypassed = email.status === 'delivered' || 
+                                   email.status === undefined || 
+                                   email.status === null ||
+                                   (email.status !== 'blocked' && email.status !== 'reported');
+                    
+                    // Check if email was clicked (look for clicked events)
+                    // We'll check this from the events array if available, or use a simple heuristic
+                    const clicked = email.clicked === true || 
+                                  (email.events && email.events.some(e => e.event === 'clicked' && !e.phantom));
+                    
+                    statuses[emailId] = { bypassed, clicked };
+                } else {
+                    // Email not found yet, assume it hasn't been processed
+                    statuses[emailId] = { bypassed: false, clicked: false };
+                }
+            });
         } catch (error) {
             this.log(`Failed to read inbox file for learning: ${error.message}`, 'WARN');
+            // On error, assume all emails haven't been processed yet
+            emailIds.forEach(emailId => {
+                statuses[emailId] = { bypassed: false, clicked: false };
+            });
         }
         
         return statuses;
@@ -397,8 +415,25 @@ class StrategyTrainer {
      * Uses exploration vs exploitation trade-off
      */
     selectBestStrategy() {
-        // Exploration: sometimes try random strategy
+        // Exploration: sometimes try unexplored or random strategy
         if (Math.random() < this.explorationRate) {
+            // First, try to find unexplored strategies (strategies with no or few attempts)
+            const unexploredStrategies = this.allStrategies.filter(strategy => {
+                const key = this.getStrategyKey(strategy);
+                const strategyData = this.strategyScores[key];
+                return !strategyData || strategyData.attempts < this.minAttemptsForLearning;
+            });
+            
+            // If we have unexplored strategies, prefer those
+            if (unexploredStrategies.length > 0) {
+                const randomStrategy = unexploredStrategies[
+                    Math.floor(Math.random() * unexploredStrategies.length)
+                ];
+                this.log(`Exploration: selected unexplored strategy ${this.getStrategyKey(randomStrategy)}`);
+                return randomStrategy;
+            }
+            
+            // Otherwise, pick any random strategy
             const randomStrategy = this.allStrategies[
                 Math.floor(Math.random() * this.allStrategies.length)
             ];
@@ -407,6 +442,7 @@ class StrategyTrainer {
         }
 
         // Exploitation: select best strategy based on scores
+        // But also consider under-explored strategies with bonus
         let bestStrategy = null;
         let bestScore = -1;
 
@@ -414,28 +450,34 @@ class StrategyTrainer {
             const key = this.getStrategyKey(strategy);
             const strategyData = this.strategyScores[key];
             
+            let score = 0;
             if (strategyData) {
                 // Weight score by number of attempts (more attempts = more reliable)
                 const confidence = Math.min(strategyData.attempts / this.minAttemptsForLearning, 1);
-                const adjustedScore = strategyData.score * confidence;
+                let adjustedScore = strategyData.score * confidence;
                 
-                if (adjustedScore > bestScore) {
-                    bestScore = adjustedScore;
-                    bestStrategy = strategy;
+                // Add exploration bonus for under-explored strategies
+                if (strategyData.attempts < this.minAttemptsForLearning) {
+                    const explorationBonus = (this.minAttemptsForLearning - strategyData.attempts) * 15;
+                    adjustedScore += explorationBonus;
                 }
+                
+                score = adjustedScore;
             } else {
-                // If no data, use default score
-                if (bestScore < 0) {
-                    bestStrategy = strategy;
-                    bestScore = 20; // Default score
-                }
+                // Unexplored strategy: give it a good default score to encourage exploration
+                score = 25; // Slightly higher than before (was 20)
+            }
+            
+            if (score > bestScore) {
+                bestScore = score;
+                bestStrategy = strategy;
             }
         });
 
         if (bestStrategy) {
             const key = this.getStrategyKey(bestStrategy);
             const data = this.strategyScores[key];
-            this.log(`Exploitation: selected best strategy ${key} (score: ${data?.score.toFixed(2) || 'N/A'}, attempts: ${data?.attempts || 0})`);
+            this.log(`Exploitation: selected best strategy ${key} (score: ${bestScore.toFixed(2)}, attempts: ${data?.attempts || 0})`);
         }
 
         return bestStrategy || this.allStrategies[0];
@@ -457,10 +499,11 @@ class StrategyTrainer {
             
             // Exploration bonus: prioritize under-explored personas
             // If a persona has fewer than minAttemptsForLearning attempts, give it bonus
+            // Increased bonuses to ensure more aggressive exploration
             const explorationBonus = attempts < this.minAttemptsForLearning 
-                ? (this.minAttemptsForLearning - attempts) * 20 // Big bonus for unexplored
+                ? (this.minAttemptsForLearning - attempts) * 30 // Bigger bonus for unexplored (was 20)
                 : attempts < (this.minAttemptsForLearning * 2)
-                ? (this.minAttemptsForLearning * 2 - attempts) * 10 // Medium bonus for under-explored
+                ? (this.minAttemptsForLearning * 2 - attempts) * 15 // Medium bonus for under-explored (was 10)
                 : 0; // No bonus for well-explored
             
             // Confidence weight: weight vulnerability score by confidence (number of attempts)
@@ -500,10 +543,41 @@ class StrategyTrainer {
 
     /**
      * Get the best strategy for a specific persona based on combination scores
+     * Includes exploration to try new strategy-persona combinations
      */
     getBestStrategyForPersona(personaId) {
         // Normalize ID to string for consistent key lookup
         const personaIdStr = String(personaId);
+        
+        // Exploration: Sometimes try a random unexplored strategy for this persona
+        // This ensures we explore new strategy-persona combinations
+        if (Math.random() < this.explorationRate) {
+            // Find strategies that haven't been tried with this persona
+            const unexploredStrategies = this.allStrategies.filter(strategy => {
+                const comboKey = this.getCombinationKey(strategy, personaIdStr);
+                const comboData = this.combinations[comboKey];
+                return !comboData || comboData.attempts < this.minAttemptsForLearning;
+            });
+            
+            // If we have unexplored strategies, pick one randomly
+            if (unexploredStrategies.length > 0) {
+                const randomStrategy = unexploredStrategies[
+                    Math.floor(Math.random() * unexploredStrategies.length)
+                ];
+                this.log(`Exploration: trying unexplored strategy ${this.getStrategyKey(randomStrategy)} for persona ${personaIdStr}`);
+                return randomStrategy;
+            }
+            
+            // If all strategies have been tried, sometimes try a random one anyway
+            const randomStrategy = this.allStrategies[
+                Math.floor(Math.random() * this.allStrategies.length)
+            ];
+            this.log(`Exploration: trying random strategy ${this.getStrategyKey(randomStrategy)} for persona ${personaIdStr}`);
+            return randomStrategy;
+        }
+
+        // Exploitation: Select best strategy based on combination scores
+        // But also consider under-explored combinations with bonus
         let bestStrategy = null;
         let bestScore = -1;
 
@@ -511,20 +585,40 @@ class StrategyTrainer {
             const comboKey = this.getCombinationKey(strategy, personaIdStr);
             const comboData = this.combinations[comboKey];
             
+            let score = 0;
             if (comboData && comboData.attempts >= this.minAttemptsForLearning) {
-                const score = this.calculateSuccessScore({
+                // Well-explored combination: use actual score
+                score = this.calculateSuccessScore({
                     bypassRate: comboData.bypassRate,
                     clickRate: comboData.clickRate
                 });
-                
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestStrategy = strategy;
-                }
+            } else if (comboData) {
+                // Partially explored: use current score with exploration bonus
+                score = this.calculateSuccessScore({
+                    bypassRate: comboData.bypassRate,
+                    clickRate: comboData.clickRate
+                });
+                // Add exploration bonus for under-explored combinations
+                const explorationBonus = (this.minAttemptsForLearning - comboData.attempts) * 15;
+                score += explorationBonus;
+            } else {
+                // Unexplored combination: give it a chance with default score
+                score = 20; // Default score to encourage exploration
+            }
+            
+            if (score > bestScore) {
+                bestScore = score;
+                bestStrategy = strategy;
             }
         });
 
-        // If no combination data, use general best strategy
+        // If no strategy found (shouldn't happen), fall back to general best strategy
+        if (bestStrategy) {
+            const comboKey = this.getCombinationKey(bestStrategy, personaIdStr);
+            const comboData = this.combinations[comboKey];
+            this.log(`Exploitation: selected strategy ${this.getStrategyKey(bestStrategy)} for persona ${personaIdStr} (score: ${bestScore.toFixed(2)}, attempts: ${comboData?.attempts || 0})`);
+        }
+
         return bestStrategy || this.selectBestStrategy();
     }
 
