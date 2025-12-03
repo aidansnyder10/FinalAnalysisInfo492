@@ -1658,6 +1658,24 @@ app.get('/api/agent/metrics', (req, res) => {
                     metrics.bypassed = bypassedEmails.length;
                     metrics.detected = emails.filter(e => e.status === 'blocked' || e.status === 'reported').length;
                     
+                    // Debug logging
+                    const statusBreakdown = {};
+                    emails.forEach(e => {
+                        const status = e.status || 'NO_STATUS';
+                        statusBreakdown[status] = (statusBreakdown[status] || 0) + 1;
+                    });
+                    console.log(`[Agent Metrics] Total: ${emails.length}, Bypassed: ${metrics.bypassed}, Detected: ${metrics.detected}`);
+                    console.log(`[Agent Metrics] Status breakdown:`, statusBreakdown);
+                    
+                    // Log recent emails for debugging
+                    const recentEmails = emails.slice(-5).map(e => ({
+                        id: e.id,
+                        subject: e.subject,
+                        status: e.status || 'NO_STATUS',
+                        receivedAt: e.receivedAt
+                    }));
+                    console.log(`[Agent Metrics] Recent 5 emails:`, JSON.stringify(recentEmails, null, 2));
+                    
                     // Count clicked emails from persisted data
                     const bypassedEmailIds = new Set(bypassedEmails.map(e => e.id));
                     const clickedEmails = emails.filter(e => 

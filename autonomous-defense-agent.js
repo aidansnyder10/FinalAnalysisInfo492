@@ -383,28 +383,39 @@ class AutonomousDefenseAgent {
                     currentEmails = JSON.parse(fileData);
                 }
                 
-                // Create a map of processed emails by ID
+                this.log(`Merging emails: ${emails.length} processed, ${currentEmails.length} in file`);
+                
+                // Create a map of processed emails by ID (these have updated statuses)
                 const processedEmailMap = new Map();
                 emails.forEach(e => processedEmailMap.set(e.id, e));
                 
-                // Merge: use processed emails if they exist, otherwise keep current emails
-                const mergedEmails = currentEmails.map(e => {
-                    return processedEmailMap.has(e.id) ? processedEmailMap.get(e.id) : e;
+                // Create a set of original email IDs we started with
+                const originalEmailIds = new Set(emails.map(e => e.id));
+                
+                // Start with all current emails in the file
+                const mergedEmails = [];
+                const mergedEmailIds = new Set();
+                
+                // First, add all processed emails (with updated statuses)
+                emails.forEach(e => {
+                    mergedEmails.push(e);
+                    mergedEmailIds.add(e.id);
                 });
                 
-                // Add any new emails that weren't in our original read
-                const originalEmailIds = new Set(emails.map(e => e.id));
+                // Then, add any emails from the file that weren't in our original read (newly deployed emails)
                 currentEmails.forEach(e => {
-                    if (!originalEmailIds.has(e.id)) {
+                    if (!originalEmailIds.has(e.id) && !mergedEmailIds.has(e.id)) {
                         mergedEmails.push(e);
+                        mergedEmailIds.add(e.id);
                     }
                 });
                 
                 // Write merged emails back
                 fs.writeFileSync(CONFIG.INBOX_FILE, JSON.stringify(mergedEmails, null, 2));
-                this.log(`Saved ${mergedEmails.length} emails to inbox file (${emails.length} processed, ${currentEmails.length} total in file)`);
+                this.log(`Saved ${mergedEmails.length} emails to inbox file (${emails.length} processed, ${currentEmails.length} were in file, ${mergedEmails.length - emails.length} new emails added)`);
             } catch (error) {
                 this.log(`Error saving inbox file: ${error.message}`, 'ERROR');
+                this.log(`Error stack: ${error.stack}`, 'ERROR');
             }
             
             // Update stats
