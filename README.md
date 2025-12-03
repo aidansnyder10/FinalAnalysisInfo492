@@ -3,7 +3,7 @@ Course: INFO 498B — Agentic Cybersecurity with AI & LLMs
 Team: <Team 2 — Aidan Snyder: aidan10, PUT REST OF YOUR NAMES HERE>
 One-line pitch: <What it does, for whom, why it matters>
 1) Live Demo
-Synthetic Industry: <URL> — status: <Up/Down> — test creds (fake): <user / pass>
+Synthetic Industry: [Demo](http://65.21.55.44:3000/agent-monitor.html)> — status: UP — test creds (fake): none
 
 
 Agentic System: <URL> — status: <Up/Down> — notes: <brief>
