@@ -847,15 +847,18 @@ app.post('/api/agent/deploy-emails', (req, res) => {
 
         // Save back to file
         try {
+            console.log(`[Deploy] Before: ${existingEmails.length} emails in inbox`);
+            console.log(`[Deploy] Adding: ${emails.length} new emails`);
             fs.writeFileSync(inboxFile, JSON.stringify(existingEmails, null, 2));
+            console.log(`[Deploy] After: ${existingEmails.length} emails in inbox (saved to file)`);
         } catch (error) {
-            console.error('Error writing inbox file:', error);
+            console.error('[Deploy] Error writing inbox file:', error);
         }
 
         // Also trigger browser localStorage update via events (if browsers are connected)
         // This is a simulation - in a real system, you'd use WebSockets or Server-Sent Events
         
-        console.log(`[Agent] Deployed ${emails.length} emails to bank inbox`);
+        console.log(`[Agent] Deployed ${emails.length} emails to bank inbox (total: ${existingEmails.length})`);
         
         res.json({
             success: true,
