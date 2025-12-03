@@ -897,33 +897,44 @@ app.get('/api/agent/status', (req, res) => {
         try {
             if (fs.existsSync(agentMetricsFile)) {
                 const data = fs.readFileSync(agentMetricsFile, 'utf8');
-                const metrics = JSON.parse(data);
-                const startTime = new Date(metrics.startTime);
-                const uptime = Date.now() - startTime.getTime();
-                
-                agentStatus = {
-                    isRunning: true, // Assume running if metrics file exists and was recently updated
-                    totalCycles: metrics.totalCycles || 0,
-                    totalEmailsGenerated: metrics.totalEmailsGenerated || 0,
-                    successfulGenerations: metrics.successfulGenerations || 0,
-                    failedGenerations: metrics.failedGenerations || 0,
-                    lastCycleTime: metrics.lastCycleTime,
-                    startTime: metrics.startTime,
-                    uptime: {
-                        days: Math.floor(uptime / (1000 * 60 * 60 * 24)),
-                        hours: Math.floor((uptime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-                        minutes: Math.floor((uptime % (1000 * 60 * 60)) / (1000 * 60))
-                    },
-                    // Attack success metrics
-                    emailsBypassed: metrics.emailsBypassed || 0,
-                    emailsDetected: metrics.emailsDetected || 0,
-                    emailsClicked: metrics.emailsClicked || 0,
-                    bypassRate: metrics.bypassRate || 0,
-                    clickRate: metrics.clickRate || 0
-                };
+                // Handle empty file
+                if (!data || data.trim().length === 0) {
+                    console.log('[Agent Status] agent-metrics.json is empty, using defaults');
+                } else {
+                    try {
+                        const metrics = JSON.parse(data);
+                        const startTime = new Date(metrics.startTime);
+                        const uptime = Date.now() - startTime.getTime();
+                        
+                        agentStatus = {
+                            isRunning: true, // Assume running if metrics file exists and was recently updated
+                            totalCycles: metrics.totalCycles || 0,
+                            totalEmailsGenerated: metrics.totalEmailsGenerated || 0,
+                            successfulGenerations: metrics.successfulGenerations || 0,
+                            failedGenerations: metrics.failedGenerations || 0,
+                            lastCycleTime: metrics.lastCycleTime,
+                            startTime: metrics.startTime,
+                            uptime: {
+                                days: Math.floor(uptime / (1000 * 60 * 60 * 24)),
+                                hours: Math.floor((uptime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+                                minutes: Math.floor((uptime % (1000 * 60 * 60)) / (1000 * 60))
+                            },
+                            // Attack success metrics
+                            emailsBypassed: metrics.emailsBypassed || 0,
+                            emailsDetected: metrics.emailsDetected || 0,
+                            emailsClicked: metrics.emailsClicked || 0,
+                            bypassRate: metrics.bypassRate || 0,
+                            clickRate: metrics.clickRate || 0
+                        };
+                    } catch (parseError) {
+                        console.error('[Agent Status] Error parsing agent-metrics.json:', parseError.message);
+                        // Continue with default values
+                    }
+                }
             }
         } catch (error) {
-            console.error('Error reading agent metrics:', error);
+            console.error('[Agent Status] Error reading agent metrics:', error);
+            // Continue with default values on error
         }
         
         // Load training stats
@@ -972,59 +983,72 @@ app.get('/api/agent/status', (req, res) => {
         try {
             if (fs.existsSync(inboxFile)) {
                 const data = fs.readFileSync(inboxFile, 'utf8');
-                const emails = JSON.parse(data);
-                
-                // Get last 10 emails, most recent first
-                recentEmails = emails.slice(-10).reverse();
-                
-                // Calculate REAL-TIME defense interaction metrics from inbox
-                // Bypassed = emails that are delivered OR have no status (not yet analyzed) OR are not blocked/reported
-                const bypassedEmails = emails.filter(e => {
-                    // If status is explicitly 'delivered', it's bypassed
-                    if (e.status === 'delivered') return true;
-                    // If status is undefined/null/empty, it's bypassed (not yet analyzed)
-                    if (!e.status || e.status === undefined || e.status === null || e.status === '') return true;
-                    // If status exists but is not 'blocked' or 'reported', it's bypassed
-                    if (e.status !== 'blocked' && e.status !== 'reported') return true;
-                    // Otherwise, it's detected
-                    return false;
-                });
-                realTimeBypassed = bypassedEmails.length;
-                realTimeDetected = emails.filter(e => e.status === 'blocked' || e.status === 'reported').length;
-                
-                // Count clicked emails - check both persisted email.clicked property AND events array
-                // email.clicked is persisted to bank-inbox.json, so it survives server restarts
-                // events array is in-memory only, so check both to get complete picture
-                const bypassedEmailIds = new Set(bypassedEmails.map(e => e.id));
-                
-                // First, count emails with clicked property (persisted)
-                const clickedFromEmails = emails.filter(e => 
-                    bypassedEmailIds.has(e.id) && e.clicked === true
-                ).length;
-                
-                // Then, count clicked events from events array (in-memory, for clicks that happened after restart)
-                const clickedEvents = events.filter(e => 
-                    e.event === 'clicked' && 
-                    !e.phantom && 
-                    bypassedEmailIds.has(e.emailId)
-                );
-                
-                // Combine both (use Set to avoid double-counting if an email has both)
-                const clickedEmailIds = new Set();
-                emails.forEach(e => {
-                    if (bypassedEmailIds.has(e.id) && e.clicked === true) {
-                        clickedEmailIds.add(e.id);
+                // Handle empty file
+                if (!data || data.trim().length === 0) {
+                    console.log('[Agent Status] bank-inbox.json is empty');
+                } else {
+                    try {
+                        const emails = JSON.parse(data);
+                        
+                        // Get last 10 emails, most recent first
+                        recentEmails = emails.slice(-10).reverse();
+                        
+                        // Calculate REAL-TIME defense interaction metrics from inbox
+                        // Bypassed = emails that are delivered OR have no status (not yet analyzed) OR are not blocked/reported
+                        const bypassedEmails = emails.filter(e => {
+                            // If status is explicitly 'delivered', it's bypassed
+                            if (e.status === 'delivered') return true;
+                            // If status is undefined/null/empty, it's bypassed (not yet analyzed)
+                            if (!e.status || e.status === undefined || e.status === null || e.status === '') return true;
+                            // If status exists but is not 'blocked' or 'reported', it's bypassed
+                            if (e.status !== 'blocked' && e.status !== 'reported') return true;
+                            // Otherwise, it's detected
+                            return false;
+                        });
+                        realTimeBypassed = bypassedEmails.length;
+                        realTimeDetected = emails.filter(e => e.status === 'blocked' || e.status === 'reported').length;
+                        
+                        // Count clicked emails - check both persisted email.clicked property AND events array
+                        // email.clicked is persisted to bank-inbox.json, so it survives server restarts
+                        // events array is in-memory only, so check both to get complete picture
+                        const bypassedEmailIds = new Set(bypassedEmails.map(e => e.id));
+                        
+                        // First, count emails with clicked property (persisted)
+                        const clickedFromEmails = emails.filter(e => 
+                            bypassedEmailIds.has(e.id) && e.clicked === true
+                        ).length;
+                        
+                        // Then, count clicked events from events array (in-memory, for clicks that happened after restart)
+                        const clickedEvents = events.filter(e => 
+                            e.event === 'clicked' && 
+                            !e.phantom && 
+                            bypassedEmailIds.has(e.emailId)
+                        );
+                        
+                        // Combine both (use Set to avoid double-counting if an email has both)
+                        const clickedEmailIds = new Set();
+                        emails.forEach(e => {
+                            if (bypassedEmailIds.has(e.id) && e.clicked === true) {
+                                clickedEmailIds.add(e.id);
+                            }
+                        });
+                        clickedEvents.forEach(e => {
+                            if (bypassedEmailIds.has(e.emailId)) {
+                                clickedEmailIds.add(e.emailId);
+                            }
+                        });
+                        realTimeClicked = clickedEmailIds.size;
+                    } catch (parseError) {
+                        console.error('[Agent Status] Error parsing bank-inbox.json:', parseError.message);
+                        // Continue with empty arrays on error
+                        recentEmails = [];
                     }
-                });
-                clickedEvents.forEach(e => {
-                    if (bypassedEmailIds.has(e.emailId)) {
-                        clickedEmailIds.add(e.emailId);
-                    }
-                });
-                realTimeClicked = clickedEmailIds.size;
+                }
             }
         } catch (error) {
-            console.error('Error reading inbox file:', error);
+            console.error('[Agent Status] Error reading inbox file:', error);
+            // Return empty arrays on error to prevent crashes
+            recentEmails = [];
         }
         
         // Calculate real-time rates
