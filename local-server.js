@@ -793,11 +793,24 @@ app.delete('/events', (req, res) => {
 // Endpoint: POST /api/agent/deploy-emails
 // Allows the autonomous agent to deploy emails to the bank inbox
 app.post('/api/agent/deploy-emails', (req, res) => {
-    console.log(`[Deploy] ===== DEPLOY ENDPOINT CALLED =====`);
-    console.log(`[Deploy] Request body keys:`, Object.keys(req.body));
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] [Deploy] ===== DEPLOY ENDPOINT CALLED =====`);
+    console.log(`[Deploy] Request method: ${req.method}`);
+    console.log(`[Deploy] Request URL: ${req.url}`);
+    console.log(`[Deploy] Request body type: ${typeof req.body}`);
+    console.log(`[Deploy] Request body keys:`, req.body ? Object.keys(req.body) : 'null/undefined');
+    
     try {
         const { emails } = req.body;
         console.log(`[Deploy] Received ${emails ? emails.length : 0} emails to deploy`);
+        
+        if (!req.body) {
+            console.error(`[Deploy] ERROR: Request body is null/undefined`);
+            return res.status(400).json({
+                success: false,
+                error: 'Request body is missing'
+            });
+        }
         
         if (!emails || !Array.isArray(emails)) {
             return res.status(400).json({
