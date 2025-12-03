@@ -374,8 +374,35 @@ class AutonomousDefenseAgent {
             }
             
             // Save updated emails back to file
+            // IMPORTANT: Re-read the file before writing to avoid losing emails that were deployed during processing
             try {
-                fs.writeFileSync(CONFIG.INBOX_FILE, JSON.stringify(emails, null, 2));
+                // Re-read the file to get any emails that were added during processing
+                let currentEmails = [];
+                if (fs.existsSync(CONFIG.INBOX_FILE)) {
+                    const fileData = fs.readFileSync(CONFIG.INBOX_FILE, 'utf8');
+                    currentEmails = JSON.parse(fileData);
+                }
+                
+                // Create a map of processed emails by ID
+                const processedEmailMap = new Map();
+                emails.forEach(e => processedEmailMap.set(e.id, e));
+                
+                // Merge: use processed emails if they exist, otherwise keep current emails
+                const mergedEmails = currentEmails.map(e => {
+                    return processedEmailMap.has(e.id) ? processedEmailMap.get(e.id) : e;
+                });
+                
+                // Add any new emails that weren't in our original read
+                const originalEmailIds = new Set(emails.map(e => e.id));
+                currentEmails.forEach(e => {
+                    if (!originalEmailIds.has(e.id)) {
+                        mergedEmails.push(e);
+                    }
+                });
+                
+                // Write merged emails back
+                fs.writeFileSync(CONFIG.INBOX_FILE, JSON.stringify(mergedEmails, null, 2));
+                this.log(`Saved ${mergedEmails.length} emails to inbox file (${emails.length} processed, ${currentEmails.length} total in file)`);
             } catch (error) {
                 this.log(`Error saving inbox file: ${error.message}`, 'ERROR');
             }

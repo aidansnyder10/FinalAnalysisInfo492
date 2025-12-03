@@ -792,7 +792,7 @@ app.delete('/events', (req, res) => {
 
 // Endpoint: POST /api/agent/deploy-emails
 // Allows the autonomous agent to deploy emails to the bank inbox
-app.post('/api/agent/deploy-emails', (req, res) => {
+app.post('/api/agent/deploy-emails', async (req, res) => {
     const timestamp = new Date().toISOString();
     console.log(`[${timestamp}] [Deploy] ===== DEPLOY ENDPOINT CALLED =====`);
     console.log(`[Deploy] Request method: ${req.method}`);
@@ -881,21 +881,53 @@ app.post('/api/agent/deploy-emails', (req, res) => {
                 console.error(`[Deploy] ERROR: Email count mismatch! Before: ${beforeCount}, After: ${afterCount}, Expected: ${beforeCount + emails.length}`);
             }
             
-            // Write to file
+            // Write to file with retry logic to handle race conditions
             const fileContent = JSON.stringify(existingEmails, null, 2);
-            fs.writeFileSync(inboxFile, fileContent);
+            let writeSuccess = false;
+            let retries = 0;
+            const maxRetries = 5;
             
-            // Verify file was written correctly
-            const verifyData = fs.readFileSync(inboxFile, 'utf8');
-            const verifyEmails = JSON.parse(verifyData);
-            console.log(`[Deploy] After: ${verifyEmails.length} emails in inbox (verified from file)`);
+            while (!writeSuccess && retries < maxRetries) {
+                try {
+                    fs.writeFileSync(inboxFile, fileContent, { flag: 'w' });
+                    
+                    // Verify file was written correctly
+                    const verifyData = fs.readFileSync(inboxFile, 'utf8');
+                    const verifyEmails = JSON.parse(verifyData);
+                    
+                    if (verifyEmails.length === existingEmails.length) {
+                        writeSuccess = true;
+                        console.log(`[Deploy] After: ${verifyEmails.length} emails in inbox (verified from file)`);
+                    } else {
+                        retries++;
+                        console.warn(`[Deploy] Verification failed (attempt ${retries}/${maxRetries}). Expected ${existingEmails.length}, got ${verifyEmails.length}. Retrying...`);
+                        await new Promise(resolve => setTimeout(resolve, 100)); // Wait 100ms before retry
+                    }
+                } catch (writeError) {
+                    retries++;
+                    console.error(`[Deploy] Write error (attempt ${retries}/${maxRetries}):`, writeError.message);
+                    if (retries < maxRetries) {
+                        await new Promise(resolve => setTimeout(resolve, 100)); // Wait 100ms before retry
+                    } else {
+                        throw writeError;
+                    }
+                }
+            }
             
-            if (verifyEmails.length !== existingEmails.length) {
-                console.error(`[Deploy] ERROR: File verification failed! Expected ${existingEmails.length}, got ${verifyEmails.length}`);
+            if (!writeSuccess) {
+                console.error(`[Deploy] ERROR: Failed to write file after ${maxRetries} attempts!`);
+                return res.status(500).json({
+                    success: false,
+                    error: 'Failed to persist emails to inbox file'
+                });
             }
         } catch (error) {
             console.error('[Deploy] Error writing inbox file:', error);
             console.error('[Deploy] Error stack:', error.stack);
+            return res.status(500).json({
+                success: false,
+                error: `Failed to save emails: ${error.message}`
+            });
         }
 
         // Also trigger browser localStorage update via events (if browsers are connected)
