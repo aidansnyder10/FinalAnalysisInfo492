@@ -1032,9 +1032,23 @@ app.get('/api/agent/status', (req, res) => {
         const realTimeBypassRate = totalEmails > 0 ? ((realTimeBypassed / totalEmails) * 100) : 0;
         const realTimeClickRate = realTimeBypassed > 0 ? ((realTimeClicked / realTimeBypassed) * 100) : 0;
         
-        // Debug logging
-        console.log(`[Agent Status] Real-time metrics: bypassed=${realTimeBypassed}, detected=${realTimeDetected}, clicked=${realTimeClicked}, total=${totalEmails}`);
-        console.log(`[Agent Status] Rates: bypass=${realTimeBypassRate.toFixed(1)}%, click=${realTimeClickRate.toFixed(1)}%`);
+        // Debug logging with detailed breakdown
+        console.log(`[Agent Status] Real-time metrics from ${emails.length} total emails:`);
+        console.log(`  - Bypassed (delivered/undefined): ${realTimeBypassed}`);
+        console.log(`  - Detected (blocked/reported): ${realTimeDetected}`);
+        console.log(`  - Clicked: ${realTimeClicked}`);
+        console.log(`  - Total analyzed: ${totalEmails}`);
+        console.log(`  - Rates: bypass=${realTimeBypassRate.toFixed(1)}%, click=${realTimeClickRate.toFixed(1)}%`);
+        
+        // Log status breakdown for debugging
+        if (emails.length > 0) {
+            const statusBreakdown = {};
+            emails.forEach(e => {
+                const status = e.status || 'NO_STATUS';
+                statusBreakdown[status] = (statusBreakdown[status] || 0) + 1;
+            });
+            console.log(`  - Status breakdown:`, statusBreakdown);
+        }
         
         // Override agent status with REAL-TIME defense interaction metrics
         agentStatus.emailsBypassed = realTimeBypassed;
