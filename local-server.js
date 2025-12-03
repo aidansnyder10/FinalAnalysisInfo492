@@ -1305,11 +1305,12 @@ app.get('/api/agent/training-stats', (req, res) => {
 
 // Endpoint: POST /api/defense/sync
 // Sync emails from browser localStorage to server file
+// IMPORTANT: Merge instead of overwrite to avoid losing agent-deployed emails
 app.post('/api/defense/sync', (req, res) => {
     try {
-        const { emails } = req.body;
+        const { emails: browserEmails } = req.body;
         
-        if (!emails || !Array.isArray(emails)) {
+        if (!browserEmails || !Array.isArray(browserEmails)) {
             return res.status(400).json({
                 success: false,
                 error: 'Missing or invalid emails array'
@@ -1318,10 +1319,43 @@ app.post('/api/defense/sync', (req, res) => {
         
         const inboxFile = './bank-inbox.json';
         
-        // Save to file
+        // Read existing emails from file
+        let existingEmails = [];
         try {
-            fs.writeFileSync(inboxFile, JSON.stringify(emails, null, 2));
-            console.log(`[Defense] Synced ${emails.length} emails from browser to server`);
+            if (fs.existsSync(inboxFile)) {
+                const fileData = fs.readFileSync(inboxFile, 'utf8');
+                if (fileData && fileData.trim().length > 0) {
+                    existingEmails = JSON.parse(fileData);
+                }
+            }
+        } catch (error) {
+            console.error('[Defense] Error reading inbox file for sync:', error);
+            // Continue with empty array if read fails
+        }
+        
+        // Merge: Use server emails as source of truth, update with browser data where IDs match
+        const existingEmailMap = new Map();
+        existingEmails.forEach(e => existingEmailMap.set(e.id, e));
+        
+        // Update existing emails with browser data (if browser has newer info)
+        browserEmails.forEach(browserEmail => {
+            if (browserEmail.id && existingEmailMap.has(browserEmail.id)) {
+                // Merge browser email data into existing email (browser might have click status, etc.)
+                const existing = existingEmailMap.get(browserEmail.id);
+                Object.assign(existing, browserEmail);
+            } else if (browserEmail.id) {
+                // New email from browser (shouldn't happen often, but handle it)
+                existingEmailMap.set(browserEmail.id, browserEmail);
+            }
+        });
+        
+        // Convert back to array
+        const mergedEmails = Array.from(existingEmailMap.values());
+        
+        // Save merged emails to file
+        try {
+            fs.writeFileSync(inboxFile, JSON.stringify(mergedEmails, null, 2));
+            console.log(`[Defense] Synced ${browserEmails.length} emails from browser, merged with ${existingEmails.length} existing emails, saved ${mergedEmails.length} total`);
         } catch (error) {
             console.error('[Defense] Error writing inbox file:', error);
             return res.status(500).json({
