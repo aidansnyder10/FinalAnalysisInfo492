@@ -1551,54 +1551,44 @@ app.get('/api/defense/metrics', (req, res) => {
 
 // Endpoint: GET /api/agent/metrics
 // Returns current industry metrics for the agent to monitor
+// This should calculate REAL-TIME metrics from bank-inbox.json (same as /api/agent/status)
 app.get('/api/agent/metrics', (req, res) => {
     try {
-        // Load evaluation metrics (simulated from localStorage)
-        const metricsFile = './evaluation-metrics.json';
+        const inboxFile = './bank-inbox.json';
         let metrics = {
             totalEmails: 0,
             detected: 0,
             bypassed: 0,
+            emailsClicked: 0,
             detectionRate: 0,
-            bypassRate: 0
+            bypassRate: 0,
+            clickRate: 0
         };
 
-        try {
-            if (fs.existsSync(metricsFile)) {
-                const data = fs.readFileSync(metricsFile, 'utf8');
-                const savedMetrics = JSON.parse(data);
-                metrics = {
-                    totalEmails: savedMetrics.totalSent || 0,
-                    detected: savedMetrics.detected || 0,
-                    bypassed: savedMetrics.bypassed || 0,
-                    detectionRate: savedMetrics.detectionRate || 0,
-                    bypassRate: savedMetrics.bypassRate || 0,
-                    timestamp: savedMetrics.timestamp
-                };
-            }
-        } catch (error) {
-            console.error('Error reading metrics file:', error);
-        }
-
-        // Also check inbox file for total count and bypass/detection status
-        const inboxFile = './bank-inbox.json';
-        let emailsClicked = 0;
-        let bypassedEmails = [];
+        // Calculate REAL-TIME metrics from bank-inbox.json (same logic as /api/agent/status)
         try {
             if (fs.existsSync(inboxFile)) {
                 const data = fs.readFileSync(inboxFile, 'utf8');
-                const emails = JSON.parse(data);
-                metrics.totalEmails = emails.length;
-                
-                // Count emails that bypassed (status === 'delivered' or no status/undefined)
-                bypassedEmails = emails.filter(e => 
-                    e.status === 'delivered' || 
-                    e.status === undefined || 
-                    e.status === null ||
-                    (e.status !== 'blocked' && e.status !== 'reported')
-                );
-                metrics.bypassed = bypassedEmails.length;
-                metrics.detected = emails.filter(e => e.status === 'blocked' || e.status === 'reported').length;
+                if (data && data.trim().length > 0) {
+                    const emails = JSON.parse(data);
+                    metrics.totalEmails = emails.length;
+                    
+                    // Count emails that bypassed (status === 'delivered' or no status/undefined)
+                    const bypassedEmails = emails.filter(e => {
+                        if (e.status === 'delivered') return true;
+                        if (!e.status || e.status === undefined || e.status === null || e.status === '') return true;
+                        if (e.status !== 'blocked' && e.status !== 'reported') return true;
+                        return false;
+                    });
+                    metrics.bypassed = bypassedEmails.length;
+                    metrics.detected = emails.filter(e => e.status === 'blocked' || e.status === 'reported').length;
+                    
+                    // Count clicked emails
+                    const bypassedEmailIds = new Set(bypassedEmails.map(e => e.id));
+                    const clickedEmails = emails.filter(e => 
+                        bypassedEmailIds.has(e.id) && e.clicked === true
+                    );
+                    metrics.emailsClicked = clickedEmails.length;
             }
         } catch (error) {
             // Ignore
