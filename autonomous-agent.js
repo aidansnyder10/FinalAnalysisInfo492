@@ -281,28 +281,65 @@ Return ONLY the JSON object, nothing else.`;
                 throw new Error('Empty response from AI');
             }
 
-            // Parse JSON response
+            // Parse JSON response with robust error handling
             let emailData = null;
+            let parseError = null;
             
             // Try direct parse
             try {
                 emailData = JSON.parse(aiResponse.trim());
             } catch (e) {
-                // Try extracting from markdown
+                parseError = e;
+                // Try extracting from markdown code blocks
                 const markdownMatch = aiResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
                 if (markdownMatch) {
-                    emailData = JSON.parse(markdownMatch[1].trim());
-                } else {
-                    // Try finding JSON object
+                    try {
+                        emailData = JSON.parse(markdownMatch[1].trim());
+                    } catch (e2) {
+                        parseError = e2;
+                    }
+                }
+                
+                // If still failed, try finding JSON object and fixing common issues
+                if (!emailData) {
                     const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
                     if (jsonMatch) {
-                        emailData = JSON.parse(jsonMatch[0]);
+                        try {
+                            let jsonStr = jsonMatch[0];
+                            // Fix common JSON issues: unescaped quotes, trailing commas
+                            jsonStr = jsonStr
+                                .replace(/,\s*}/g, '}')  // Remove trailing commas before }
+                                .replace(/,\s*]/g, ']')  // Remove trailing commas before ]
+                                .replace(/([^\\])"/g, '$1\\"')  // Escape unescaped quotes (but this might break things)
+                                .replace(/^"/, '\\"')  // Escape first quote
+                                .replace(/"$/, '\\"'); // Escape last quote
+                            emailData = JSON.parse(jsonStr);
+                        } catch (e3) {
+                            parseError = e3;
+                            // Last resort: try to extract fields manually
+                            const subjectMatch = aiResponse.match(/"subject"\s*:\s*"([^"]+)"/);
+                            const contentMatch = aiResponse.match(/"content"\s*:\s*"([^"]+(?:"[^"]*")*[^"]*)"/) || 
+                                                aiResponse.match(/"content"\s*:\s*"([\\s\\S]*?)"/);
+                            const senderMatch = aiResponse.match(/"sender"\s*:\s*"([^"]+)"/);
+                            const urlMatch = aiResponse.match(/"url"\s*:\s*"([^"]+)"/);
+                            
+                            if (subjectMatch && contentMatch) {
+                                emailData = {
+                                    subject: subjectMatch[1],
+                                    content: contentMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
+                                    sender: senderMatch ? senderMatch[1] : 'IT Operations Team',
+                                    url: urlMatch ? urlMatch[1] : null
+                                };
+                                this.log(`Recovered email data from malformed JSON using regex extraction`, 'WARN');
+                            }
+                        }
                     }
                 }
             }
 
             if (!emailData || !emailData.subject || !emailData.content) {
-                throw new Error('Invalid email data structure');
+                this.log(`Failed to parse email JSON. Response: ${aiResponse.substring(0, 200)}...`, 'ERROR');
+                throw new Error(`Invalid email data structure: ${parseError ? parseError.message : 'Missing subject or content'}`);
             }
 
             // Use the sender email we generated earlier and ensure URL matches domain
