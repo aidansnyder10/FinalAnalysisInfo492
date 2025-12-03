@@ -1583,37 +1583,42 @@ app.get('/api/agent/metrics', (req, res) => {
                     metrics.bypassed = bypassedEmails.length;
                     metrics.detected = emails.filter(e => e.status === 'blocked' || e.status === 'reported').length;
                     
-                    // Count clicked emails
+                    // Count clicked emails from persisted data
                     const bypassedEmailIds = new Set(bypassedEmails.map(e => e.id));
                     const clickedEmails = emails.filter(e => 
                         bypassedEmailIds.has(e.id) && e.clicked === true
                     );
                     metrics.emailsClicked = clickedEmails.length;
+                    
+                    // Also check events array for clicks that happened after restart
+                    const clickedEvents = events.filter(e => 
+                        e.event === 'clicked' && 
+                        !e.phantom && 
+                        bypassedEmailIds.has(e.emailId)
+                    );
+                    // Combine both (use Set to avoid double-counting)
+                    const clickedEmailIds = new Set();
+                    clickedEmails.forEach(e => clickedEmailIds.add(e.id));
+                    clickedEvents.forEach(e => clickedEmailIds.add(e.emailId));
+                    metrics.emailsClicked = clickedEmailIds.size;
+                    
+                    // Calculate rates from inbox data
+                    const totalEmails = metrics.bypassed + metrics.detected;
+                    if (totalEmails > 0) {
+                        metrics.bypassRate = parseFloat(((metrics.bypassed / totalEmails) * 100).toFixed(2));
+                        metrics.detectionRate = parseFloat(((metrics.detected / totalEmails) * 100).toFixed(2));
+                    }
+                    if (metrics.bypassed > 0) {
+                        metrics.clickRate = parseFloat(((metrics.emailsClicked / metrics.bypassed) * 100).toFixed(2));
+                    }
+                }
             }
         } catch (error) {
-            // Ignore
+            console.error('[Agent Metrics] Error reading inbox file:', error);
         }
 
-        // Get click data from engagement events - ONLY count clicks for emails that bypassed defense
-        const bypassedEmailIds = new Set(bypassedEmails.map(e => e.id));
-        const clickedEvents = events.filter(e => 
-            e.event === 'clicked' && 
-            !e.phantom && 
-            bypassedEmailIds.has(e.emailId)
-        );
-        emailsClicked = clickedEvents.length;
-
-        // Calculate rates from inbox data (always calculate, don't rely on evaluation-metrics.json)
-        const totalEmails = metrics.totalEmails || 0;
-        const bypassRate = totalEmails > 0 
-            ? ((metrics.bypassed / totalEmails) * 100).toFixed(2) 
-            : 0;
-        const detectionRate = totalEmails > 0 
-            ? ((metrics.detected / totalEmails) * 100).toFixed(2) 
-            : 0;
-        const clickRate = metrics.bypassed > 0 
-            ? ((emailsClicked / metrics.bypassed) * 100).toFixed(2) 
-            : 0;
+        // Debug logging
+        console.log(`[Agent Metrics] Returning: ${metrics.bypassed} bypassed, ${metrics.detected} detected, ${metrics.emailsClicked} clicked (bypass: ${metrics.bypassRate}%, click: ${metrics.clickRate}%)`);
 
         res.json({
             success: true,
@@ -1621,10 +1626,11 @@ app.get('/api/agent/metrics', (req, res) => {
                 totalEmails: metrics.totalEmails,
                 detected: metrics.detected,
                 bypassed: metrics.bypassed,
-                emailsClicked,
-                detectionRate: parseFloat(detectionRate),
-                bypassRate: parseFloat(bypassRate),
-                clickRate: parseFloat(clickRate)
+                emailsClicked: metrics.emailsClicked,
+                detectionRate: metrics.detectionRate,
+                bypassRate: metrics.bypassRate,
+                clickRate: metrics.clickRate,
+                timestamp: new Date().toISOString()
             }
         });
     } catch (error) {
