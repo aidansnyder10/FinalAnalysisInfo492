@@ -1,6 +1,6 @@
-<Project Title> — <Industry> — <Defense/Offense>
+Team 2 — Finance— Offense
 Course: INFO 498B — Agentic Cybersecurity with AI & LLMs
-Team: <Team # — names/NetIDs>
+Team: <Team 2 — Aidan Snyder: aidan10, PUT REST OF YOUR NAMES HERE>
 One-line pitch: <What it does, for whom, why it matters>
 1) Live Demo
 Synthetic Industry: <URL> — status: <Up/Down> — test creds (fake): <user / pass>
