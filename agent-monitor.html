@@ -608,10 +608,33 @@
                     return;
                 }
                 
-                const trends = result.trends;
-                const labels = trends.map(t => `Cycle ${t.cycle_number || 0}`);
-                const bypassRates = trends.map(t => parseFloat(t.bypass_rate || 0));
-                const clickRates = trends.map(t => parseFloat(t.click_rate || 0));
+                // Ensure trends is an array
+                const trends = Array.isArray(result.trends) ? result.trends : [result.trends];
+                
+                // Sort by cycle number to ensure chronological order
+                trends.sort((a, b) => (a.cycle_number || 0) - (b.cycle_number || 0));
+                
+                // Extract data with proper validation
+                const labels = trends.map((t, index) => {
+                    const cycleNum = t.cycle_number !== undefined ? t.cycle_number : (index + 1);
+                    return `Cycle ${cycleNum}`;
+                });
+                
+                const bypassRates = trends.map(t => {
+                    const rate = parseFloat(t.bypass_rate || t.bypassRate || 0);
+                    return isNaN(rate) ? 0 : rate;
+                });
+                
+                const clickRates = trends.map(t => {
+                    const rate = parseFloat(t.click_rate || t.clickRate || 0);
+                    return isNaN(rate) ? 0 : rate;
+                });
+                
+                // Debug logging
+                console.log('Trends data:', trends);
+                console.log('Labels:', labels);
+                console.log('Bypass rates:', bypassRates);
+                console.log('Click rates:', clickRates);
                 
                 const ctx = document.getElementById('trendsChart');
                 if (!ctx) return;
@@ -631,7 +654,9 @@
                                 borderColor: '#00ff88',
                                 backgroundColor: 'rgba(0, 255, 136, 0.1)',
                                 tension: 0.4,
-                                fill: true
+                                fill: true,
+                                pointRadius: 4,
+                                pointHoverRadius: 6
                             },
                             {
                                 label: 'Click Rate %',
@@ -639,38 +664,77 @@
                                 borderColor: '#ffaa00',
                                 backgroundColor: 'rgba(255, 170, 0, 0.1)',
                                 tension: 0.4,
-                                fill: true
+                                fill: true,
+                                pointRadius: 4,
+                                pointHoverRadius: 6
                             }
                         ]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        interaction: {
+                            intersect: false,
+                            mode: 'index'
+                        },
                         plugins: {
                             legend: {
+                                display: true,
+                                position: 'top',
                                 labels: {
-                                    color: '#e0e0e0'
+                                    color: '#e0e0e0',
+                                    usePointStyle: true,
+                                    padding: 15
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                titleColor: '#e0e0e0',
+                                bodyColor: '#e0e0e0',
+                                borderColor: '#333',
+                                borderWidth: 1,
+                                padding: 12,
+                                callbacks: {
+                                    label: function(context) {
+                                        return context.dataset.label + ': ' + context.parsed.y.toFixed(1) + '%';
+                                    }
                                 }
                             }
                         },
                         scales: {
                             x: {
-                                ticks: {
+                                display: true,
+                                title: {
+                                    display: true,
+                                    text: 'Cycle Number',
                                     color: '#888'
                                 },
+                                ticks: {
+                                    color: '#888',
+                                    maxRotation: 45,
+                                    minRotation: 0
+                                },
                                 grid: {
-                                    color: '#333'
+                                    color: '#333',
+                                    drawBorder: false
                                 }
                             },
                             y: {
+                                display: true,
+                                title: {
+                                    display: true,
+                                    text: 'Rate (%)',
+                                    color: '#888'
+                                },
                                 ticks: {
                                     color: '#888',
                                     callback: function(value) {
-                                        return value + '%';
+                                        return value.toFixed(0) + '%';
                                     }
                                 },
                                 grid: {
-                                    color: '#333'
+                                    color: '#333',
+                                    drawBorder: false
                                 },
                                 beginAtZero: true,
                                 max: 100
