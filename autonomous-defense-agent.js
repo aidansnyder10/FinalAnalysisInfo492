@@ -357,6 +357,8 @@ class AutonomousDefenseAgent {
                         this.log(`✓ Reported medium-risk email: "${email.subject}" (Risk: ${classification.riskScore}/100)`);
                     } else {
                         // Low risk - mark as analyzed but don't block
+                        // Ensure status is 'delivered' to indicate it bypassed detection
+                        email.status = 'delivered';
                         bypassedCount++;
                         this.stats.lowRiskAllowed++;
                         this.log(`- Allowed low-risk email: "${email.subject}" (Risk: ${classification.riskScore}/100)`);

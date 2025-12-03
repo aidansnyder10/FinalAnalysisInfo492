@@ -1069,15 +1069,16 @@ app.get('/api/agent/status', (req, res) => {
                         recentEmails = emails.slice(-10).reverse();
                         
                         // Calculate REAL-TIME defense interaction metrics from inbox
-                        // Bypassed = emails that are delivered OR have no status (not yet analyzed) OR are not blocked/reported
+                        // Bypassed = emails that are delivered OR have been processed as low-risk (have mlClassification but status is delivered)
                         const bypassedEmails = emails.filter(e => {
-                            // If status is explicitly 'delivered', it's bypassed
+                            // Explicitly delivered
                             if (e.status === 'delivered') return true;
-                            // If status is undefined/null/empty, it's bypassed (not yet analyzed)
-                            if (!e.status || e.status === undefined || e.status === null || e.status === '') return true;
-                            // If status exists but is not 'blocked' or 'reported', it's bypassed
-                            if (e.status !== 'blocked' && e.status !== 'reported') return true;
-                            // Otherwise, it's detected
+                            // No status but has been processed (defense agent marked it as low risk)
+                            if ((!e.status || e.status === undefined || e.status === null || e.status === '') && e.mlClassification) return true;
+                            // Any status that's not blocked/reported and has been processed
+                            if (e.status && e.status !== 'blocked' && e.status !== 'reported' && e.mlClassification) return true;
+                            // Pending analysis (no status, no mlClassification) - count as bypassed for now
+                            if (!e.status && !e.mlClassification) return true;
                             return false;
                         });
                         realTimeBypassed = bypassedEmails.length;
@@ -1649,10 +1650,15 @@ app.get('/api/agent/metrics', (req, res) => {
                     metrics.totalEmails = emails.length;
                     
                     // Count emails that bypassed (status === 'delivered' or no status/undefined)
+                    // IMPORTANT: Only count emails that have been processed (have detectionMetadata or were explicitly marked)
+                    // OR emails that are clearly delivered (status === 'delivered')
                     const bypassedEmails = emails.filter(e => {
+                        // Explicitly delivered
                         if (e.status === 'delivered') return true;
-                        if (!e.status || e.status === undefined || e.status === null || e.status === '') return true;
-                        if (e.status !== 'blocked' && e.status !== 'reported') return true;
+                        // No status but has been processed (defense agent marked it as low risk)
+                        if ((!e.status || e.status === undefined || e.status === null || e.status === '') && e.mlClassification) return true;
+                        // Any status that's not blocked/reported and has been processed
+                        if (e.status && e.status !== 'blocked' && e.status !== 'reported' && e.mlClassification) return true;
                         return false;
                     });
                     metrics.bypassed = bypassedEmails.length;
