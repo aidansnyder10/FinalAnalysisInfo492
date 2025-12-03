@@ -793,8 +793,11 @@ app.delete('/events', (req, res) => {
 // Endpoint: POST /api/agent/deploy-emails
 // Allows the autonomous agent to deploy emails to the bank inbox
 app.post('/api/agent/deploy-emails', (req, res) => {
+    console.log(`[Deploy] ===== DEPLOY ENDPOINT CALLED =====`);
+    console.log(`[Deploy] Request body keys:`, Object.keys(req.body));
     try {
         const { emails } = req.body;
+        console.log(`[Deploy] Received ${emails ? emails.length : 0} emails to deploy`);
         
         if (!emails || !Array.isArray(emails)) {
             return res.status(400).json({
