@@ -1198,20 +1198,40 @@ app.get('/api/agent/trends', async (req, res) => {
             // Fallback: generate trends from local metrics history if available
             const metricsFile = './agent-metrics.json';
             if (fs.existsSync(metricsFile)) {
-                const metrics = JSON.parse(fs.readFileSync(metricsFile, 'utf8'));
-                const trends = [{
-                    cycle_number: metrics.totalCycles || 0,
-                    bypass_rate: metrics.bypassRate || 0,
-                    click_rate: metrics.clickRate || 0,
-                    emails_bypassed: metrics.emailsBypassed || 0,
-                    emails_clicked: metrics.emailsClicked || 0,
-                    created_at: new Date().toISOString()
-                }];
-                res.json({
-                    success: true,
-                    trends: trends,
-                    note: 'Using current metrics (history not available)'
-                });
+                try {
+                    const fileData = fs.readFileSync(metricsFile, 'utf8');
+                    if (!fileData || fileData.trim().length === 0) {
+                        return res.json({
+                            success: false,
+                            trends: [],
+                            message: 'Metrics file is empty'
+                        });
+                    }
+                    const metrics = JSON.parse(fileData);
+                    
+                    // Ensure we return a proper array with valid data
+                    const trends = [{
+                        cycle_number: parseInt(metrics.totalCycles) || 0,
+                        bypass_rate: parseFloat(metrics.bypassRate) || 0,
+                        click_rate: parseFloat(metrics.clickRate) || 0,
+                        emails_bypassed: parseInt(metrics.emailsBypassed) || 0,
+                        emails_clicked: parseInt(metrics.emailsClicked) || 0,
+                        created_at: new Date().toISOString()
+                    }];
+                    
+                    res.json({
+                        success: true,
+                        trends: trends,
+                        note: 'Using current metrics (history not available)'
+                    });
+                } catch (error) {
+                    console.error('[Agent] Error parsing metrics file:', error);
+                    res.json({
+                        success: false,
+                        trends: [],
+                        message: 'Error reading metrics file'
+                    });
+                }
             } else {
                 res.json({
                     success: false,
