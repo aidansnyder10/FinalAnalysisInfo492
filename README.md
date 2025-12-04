@@ -2,7 +2,9 @@ Team 2 — Finance— Offense
 Course: INFO 498B — Agentic Cybersecurity with AI & LLMs
 Team: <Team 2 — Aidan Snyder: aidan10, PUT REST OF YOUR NAMES HERE>
 
-One-line pitch: We as team two wanted to test the role of Agentic Systems when generating phishing attacks against financial institutions. Many individuals are victims of 
+One-line pitch: We as team two wanted to test the role of Agentic Systems when generating phishing attacks against financial institutions. Many individuals are victims of social engineering, and we wanted to see how powerful AI models were when it came to creating and sending these messages autonomously.
+
+
 1) Live Demo
 Synthetic Industry: [Demo](http://65.21.55.44:3000/agent-monitor.html)> — status: UP — test creds (fake): none
 
