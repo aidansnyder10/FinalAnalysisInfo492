@@ -1,6 +1,6 @@
 Team 2 — Finance— Offense
 Course: INFO 498B — Agentic Cybersecurity with AI & LLMs
-Team: <Team 2 — Aidan Snyder: aidan10, PUT REST OF YOUR NAMES HERE>
+Team: <Team 2 — Aidan Snyder: aidan10, Phoebe Dong: dongpp, PUT REST OF YOUR NAMES HERE>
 
 One-line pitch: We as team two wanted to test the role of Agentic Systems when generating phishing attacks against financial institutions. Many individuals are victims of social engineering, and we wanted to see how powerful AI models were when it came to creating and sending these messages autonomously.
 
@@ -69,13 +69,13 @@ Demo #5 (final): <what was validated> — Result: <one sentence> — Evidence: <
 
 
 6) Key Results (plain text)
-Effectiveness: <e.g., detection/attack success %, MTTR trend>
+Effectiveness: The agentic attacker continued to show strong performance during the updated Demo 4 run. Across current 91 attack cycles, the system generated 268 emails, with a 98.2% generation success rate (268 success, 5 failed). Out of 504 total defense interactions, 366 emails bypassed defenses (a 72.6% bypass rate) and 28 were clicked, giving a 7.7% click rate. These numbers show that most AI-generated emails not only landed in the inbox but also stayed convincing enough to get real engagement. Self-training results also showed improvement in strategy effectiveness, with the top models hitting ~79% bypass rates under high-urgency attacks.
 
 
-Reliability: <uptime / error patterns>
+Reliability: The system stayed stable for the full 48-hour continuous run, with almost no downtime and minimal errors during email generation. The dashboards updated consistently, attack logs recorded correctly, and the self-training loop kept running on schedule. No major crashes or data loss happened during testing.
 
 
-Safety: <policy violations blocked, guardrails that mattered>
+Safety: All actions remained restricted to our synthetic environment. Role-based access prevented cross-dashboard misuse, and the system enforced guardrails on generation (no harmful or out-of-scope content). Defense filters still surfaced detection events clearly, and the sandboxing ensured all emails, metrics, and personas stayed inside the controlled demo environment.
 
 
 7) How to Use / Deploy
@@ -90,12 +90,13 @@ Test steps: see docs/test-plan.md
 
 8) Safety, Ethics, Limits
 Synthetic data only; no real credentials or org systems.
+Everything — personas, emails, dashboards, logs — is fully fake and contained. The system never interacts with real networks or external users.
 
 
-Controls: <role gating, throttling, sandboxing, policy checks>.
+Controls: Role gating keeps hacker and admin actions separate. Sandboxing restricts all activity to safe demo pages. Throttling limits how fast emails are generated. Policy checks inside prompts stop the LLM from going outside acceptable content.
 
 
-Known limits/failure modes: <brief list>.
+Known limits/failure modes: The defense side is simpler than a real bank, so bypass rates don’t perfectly reflect real-world filtering. The AI attacker can occasionally hallucinate details or push urgency too hard. Self-training improves tone and personalization, but it still can’t simulate full real-world threat-intel cycles. Overall, the system is strong as a demo, but not a production-level model of real financial security.
 
 
 9) Final Deliverables
