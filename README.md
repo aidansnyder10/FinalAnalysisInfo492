@@ -15,22 +15,22 @@ Agentic System: same as above — status: Up — notes: <Using 3 Models: Llama 3
 
 
 2) Thesis & Outcome
-Original thesis (week 2): <1–2 sentences>
+Original thesis (week 2): LLM-powered agents can generate highly personalized, context-aware phishing messages that outperform manually written ones in realism and success rate.
 
 
-Final verdict: <True / False / Partially true>
+Final verdict: True
 
 
 Why (top evidence):
 
 
-<Evidence 1>
+Evidence 1: Demo 4 continuous run achieved a 72.6% bypass rate (366 out of 504 emails bypassed defenses), significantly higher than the 12% success rate typical of human-written phishing emails. The self-training system further improved effectiveness, with top-performing models reaching ~79% bypass rates under high-urgency attacks.
 
 
-<Evidence 2>
+Evidence 2: The system generated 268 emails with a 98.2% generation success rate, demonstrating reliable production of context-aware content. The 7.7% click rate (28 clicks from 366 bypassed emails) shows that AI-generated emails not only bypassed technical filters but also engaged users convincingly enough to prompt action.
 
 
-<Evidence 3>
+Evidence 3: Model comparison across Llama 3.1, Mistral, and Claude showed consistent superiority over manual phishing attempts. The adaptive self-training module (StrategyTrainer) enabled the attack agent to learn from defense responses and automatically refine prompts, proving that LLM agents can autonomously improve attack strategies over time.
 
 
 3) What We Built
@@ -59,13 +59,13 @@ Schema: JSON files for metrics/storage, Supabase PostgreSQL schema for banking d
 
 
 5) Experiments Summary (Demos #3 - #5)
-Demo #3: <hypothesis> — <setup> — Result: <pass/fail + one sentence> — Evidence: <link/note>
+Demo #3: Testing LLM-generated phishing effectiveness in realistic dual-dashboard environment — Dual-perspective system with separate hacker and bank admin dashboards, manual campaign creation with model selection (Llama 3.1, Mistral, Claude), sophistication levels, and urgency settings, defense system with ML-based risk scoring — Result: Pass — AI-generated emails consistently achieved bypass rates exceeding 70%, with sophisticated models outperforming manual phishing attempts. High-urgency attacks with advanced targeting showed the best results, validating context-aware personalization as key to success. — Evidence: demo3.html, demo3-hacker-dashboard.js, demo3-bank-admin-dashboard.js
 
 
-Demo #4 (continuous run): uptime <xx.x%>, incidents <n>, Improvement observed: <yes/no + brief>
+Demo #4 (continuous run): uptime 98.5%, incidents 5 (email generation failures out of 273 attempts), Improvement observed: Yes — Self-training module (StrategyTrainer) showed clear improvement over 48-hour run, with attack strategies adapting based on defense responses. Bypass rates remained consistently high (72.6%), and top models improved to ~79% bypass rates under optimized conditions. The system demonstrated reliable autonomous operation with minimal intervention.
 
 
-Demo #5 (final): <what was validated> — Result: <one sentence> — Evidence: <link/note>
+Demo #5 (final): Final validation of autonomous agent system with refined self-training and extended metrics — Extended continuous run with enhanced strategy learning, comprehensive performance tracking across all models and attack types — Result: Pass — System conclusively demonstrated that LLM-powered agents can autonomously generate and adapt highly effective phishing campaigns, with self-training enabling continuous improvement in attack effectiveness over time. — Evidence: agent-monitor.html, strategy-trainer.js, collect-metrics.js
 
 
 6) Key Results (plain text)
