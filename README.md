@@ -100,10 +100,10 @@ Known limits/failure modes: The defense side is simpler than a real bank, so byp
 
 
 9) Final Deliverables
-1000-word paper: <link>
+1000-word paper: <[Google Doc](https://docs.google.com/document/d/1d2JW6Jfj4qluD_mb-oAG21aXnTkrNgQgm4dtBQ_KM7Y/edit?usp=sharing)>
 
 
-Slides: <link>
+Slides: <[Google Slides](https://docs.google.com/presentation/d/1AE-zu3-0QDMRntImyIpjHAGSWMHgk8hf3qsnXGAYjcY/edit?usp=sharing)>
 
 
 Evidence folder (logs/screens): /evidence/
