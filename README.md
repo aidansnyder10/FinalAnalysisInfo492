@@ -106,20 +106,16 @@ Known limits/failure modes: The defense side is simpler than a real bank, so byp
 Slides: <[Google Slides](https://docs.google.com/presentation/d/1AE-zu3-0QDMRntImyIpjHAGSWMHgk8hf3qsnXGAYjcY/edit?usp=sharing)>
 
 
-Evidence folder (logs/screens): /evidence/
-
 
 10) Next Steps
-<Top improvement 1>
+Imrpove UI for more realism
 
 
-<Top improvement 2>
+Calculate impact Phishing has on financial institutions
+
+Improve Self Training
 
 
-<Top improvement 3>
-
-
-Maintainers: <names> • Contact: <email>
 
 
 # SecureBank Admin Portal
